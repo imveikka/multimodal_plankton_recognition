@@ -1,9 +1,37 @@
+"""
+Preparation of multimodal CytoSense data.
+
+Author: Veikka Immonen
+
+Given the raw annotation table (Pulse-shapes_annotated_CS_images.csv) and 
+compressed image folders (or depending how you got the data, this is what I got)
+of each plankton specie, this script preprocess the data into a form that can 
+be handled more easier for model training and possible train/test splitting. 
+Running this script following directories and files:
+
+*   ./images/: contains of all images where nested directory structures are
+    flattened. Each image is renamed by it's respective label (X) from the
+    annotation table
+*   ./others/: scatter and fluorence data of each sample, in which such data is
+    available. Stored in csv-files with same naming format as in images.
+*   /annotations.csv: New annotation table, where for each sample, the class
+    name, and information of available modalities is tabulated.
+
+Once you have all the data downloaded, the preprocessing can be done by
+
+    $ python preprocess.py
+
+Note that in order to re-run the script, previously created files and 
+directories must be removed before:
+
+    $ rm -rf images others annotations.csv
+"""
+
 import zipfile
 from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 import shutil
-
 
 if __name__ == '__main__':
 
