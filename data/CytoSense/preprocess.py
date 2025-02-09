@@ -69,9 +69,10 @@ if __name__ == '__main__':
         if (img_path / f'{file_id}.jpg').exists():
             info['has_image'] = True
             (img_path / f'{file_id}.jpg').rename(img_path / f'{x}.jpg')
-        other = samples.iloc[:, -5:]
+        other = samples.iloc[:, -7:]
         if not other.iloc[0].isna().any():
             info['has_fluorence'] = True
+            other.columns = ['FWS', 'SWS', 'Green', 'Yellow', 'Orange', 'Red', 'Curvature']
             other.to_csv(mod_path / f'{x}.csv', index=False)
         annotations = pd.concat([annotations, info], ignore_index=True)
     
