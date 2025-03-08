@@ -29,6 +29,7 @@ class MultiSet(Dataset):
         
         self.image_transforms = ImageTransforms()
         self.signal_transforms = SignalTransforms()
+        self.augmentation = Augmentation()
 
     def __len__(self):
         return len(self.image_files)
@@ -37,18 +38,29 @@ class MultiSet(Dataset):
         image = torchvision.io.decode_image(self.image_files[index])
         signal = np.loadtxt(self.signal_files[index], delimiter=',', skiprows=1)  
         signal = torch.tensor(signal)
+
+        image = self.image_transforms(image)
+        signal = self.signal_transforms(signal)
         y = self.label_encoder.transform([self.labels[index]])
-        return self.image_transforms(image), self.signal_transforms(signal), torch.tensor(y)
+
+        if self.annotation.startswith('train'):
+            image, signal = self.augmentation(image, signal)
+        else:
+            image = v2.functional.resize(image, 224)
+
+        return image, signal, torch.tensor(y)
 
 
 class ImageTransforms(nn.Module):
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        image = image[:, 20:, :]
         bg = find_background_color(image)
+        image[0, :25, :] = bg[0]
+        image[1, :25, :] = bg[1]
+        image[2, :25, :] = bg[2]
         image = square_pad(image, fill=bg)
-        image = v2.functional.resize(image, 224)
-        return v2.functional.to_dtype(image, dtype=torch.float32, scale=True)
+        image = v2.functional.to_dtype(image, dtype=torch.float32, scale=True)
+        return image
 
 
 class SignalTransforms(nn.Module):
@@ -59,7 +71,24 @@ class SignalTransforms(nn.Module):
         return signal
 
 
-def collate_bert(batch: list[tuple[torch.Tensor]]) -> tuple[torch.Tensor]:
+class Augmentation(nn.Module):
+
+    crop = v2.RandomCrop((224, 224))
+
+    def forward(self, image: torch.Tensor, signal: torch.Tensor) -> tuple[torch.Tensor]:
+        image = v2.functional.resize(image, 240)
+        image = self.crop(image)
+        if random.randint(0, 1) == 0:
+            image = v2.functional.vertical_flip(image)
+        image += (0.01 * torch.randn(image.shape[1:]))
+        signal += (0.01 * torch.randn(signal.shape))
+        if random.randint(0, 1) == 0:
+            image = v2.functional.horizontal_flip(image)
+            signal = signal.flip(0)
+        return image, signal
+
+
+def multi_collate(batch: list[tuple[torch.Tensor]], bert: bool = False) -> tuple[torch.Tensor]:
 
     image, signal, y = zip(*batch)
     lens = map(len, signal)
@@ -67,15 +96,12 @@ def collate_bert(batch: list[tuple[torch.Tensor]]) -> tuple[torch.Tensor]:
 
     image = torch.stack(image)
     signal = nn.utils.rnn.pad_sequence(signal, batch_first=True)
-    cls = torch.zeros(batches, 1, signal.shape[-1])
-    signal = torch.cat((cls, signal), 1)
     y = torch.cat(y)
+    if bert:
+        cls = torch.zeros(batches, 1, signal.shape[-1])
+        signal = torch.cat((cls, signal), 1)
 
-    time = torch.zeros(signal.shape[:2]).long()
-    for i, l in enumerate(lens):
-        time[i, :l+1] = torch.arange(1, l+2)
-
-    return image, signal, time, y
+    return image, signal, y
 
 
 def find_background_color(image: torch.Tensor, p: int = 2) -> list[int]:
