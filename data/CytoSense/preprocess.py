@@ -72,7 +72,7 @@ if __name__ == '__main__':
         other = samples.iloc[:, -7:]
         if not other.iloc[0].isna().any():
             info['has_fluorence'] = True
-            other = other.loc[(other != 0).any(axis=1)]
+            other = other.loc[(other != 0).all(axis=1)]
             other.columns = ['FSC', 'SSC', 'Green', 'Yellow', 'Orange', 'Red', 'Curvature']
             other.to_csv(mod_path / f'{x}.csv', index=False)
         annotations = pd.concat([annotations, info], ignore_index=True)
