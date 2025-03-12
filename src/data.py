@@ -50,7 +50,7 @@ class MultiSet(Dataset):
         if self.annotation_file.startswith('train'):
             image, signal = self.augmentation(image, signal)
         else:
-            image = v2.functional.resize(image, self.image_shape)
+            image = v2.functional.resize(image, self.image_size)
 
         return image, signal, torch.tensor(y)
 
@@ -106,9 +106,6 @@ class Augmentation(object):
 def multi_collate(batch: list[tuple[torch.Tensor]]) -> tuple[torch.Tensor]:
 
     image, signal, y = zip(*batch)
-    lens = map(len, signal)
-    batches = len(image)
-
     image = torch.stack(image)
     signal = nn.utils.rnn.pad_sequence(signal, batch_first=True)
     y = torch.cat(y)
