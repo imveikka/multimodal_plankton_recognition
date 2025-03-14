@@ -36,10 +36,11 @@ class TS_BERT(nn.Module):
 
     def preprocess_signal(self, signal: torch.Tensor) -> tuple[torch.Tensor]:
         b, l, d = signal.shape
-        signal = torch.cat((torch.zeros(b, 1, d), signal), 1)
+        CLS = torch.zeros(b, 1, d).to(signal.device)
+        signal = torch.cat((CLS, signal), 1)
         mask = (signal == 0).all(2)
         mask[:, 0] = False
-        time = torch.tile(torch.arange(1, l+2), (b, 1))
+        time = torch.tile(torch.arange(1, l+2), (b, 1)).to(signal.device)
         time[mask] = 0
         return signal, time, mask
 
@@ -52,18 +53,17 @@ class TS_BERT(nn.Module):
 
 class ImageEncoder(nn.Module):
 
-    def __init__(self, name: str, weights: str = 'DEFAULT') -> None:
+    def __init__(self, name: str, weights: str | None = None) -> None:
         super().__init__()
 
         self.backbone = getattr(models, name)(weights=weights)
-
-        self.norm = nn.LayerNorm(self.dim_out)
 
         # ResNet
         if hasattr(self.backbone, 'fc'):
             self.dim_out = self.backbone.fc.in_features
             self.norm = nn.LayerNorm(self.dim_out)
             self.backbone.fc = Empty()
+            self.norm = nn.LayerNorm(self.dim_out)
 
         # AlexNet, DenseNet, SqueezeNet, EfficientNet
         elif hasattr(self.backbone, 'classifier'):
@@ -76,6 +76,7 @@ class ImageEncoder(nn.Module):
             else:
                 self.dim_out = self.backbone.classifier.in_features
                 self.backbone.classifier = Empty()
+            self.norm = nn.LayerNorm(self.dim_out)
 
         # ViT
         elif hasattr(self.backbone, 'heads'):
@@ -107,11 +108,13 @@ class CLIP(nn.Module):
         return self.projection_2(self.model_2(input))
 
     def loss(self, encoding_1: torch.Tensor, encoding_2: torch.Tensor) -> torch.Tensor:
-        logits = (1 - pairwise_cosine_similarity(encoding_1, encoding_2)) * self.logit_scale
-        labels = torch.arange(logits.shape[0]).long().to(logits.device)
-        loss_i = nn.functional.cross_entropy(logits, labels)
-        loss_s = nn.functional.cross_entropy(logits.T, labels)
-        loss = (loss_i + loss_s) / 2
+        encoding_1 = encoding_1 / encoding_1.norm(dim=1, keepdim=True)
+        encoding_2 = encoding_2 / encoding_2.norm(dim=1, keepdim=True)       
+        logits = (encoding_1 @ encoding_2.t()) * self.logit_scale.exp()
+        labels = torch.arange(encoding_1.shape[0]).long().to(encoding_1.device)
+        loss_1 = nn.functional.cross_entropy(logits, labels)
+        loss_2 = nn.functional.cross_entropy(logits.t(), labels)
+        loss = (loss_1 + loss_2) / 2
         return loss
     
     def forward(self, input_1: torch.Tensor, input_2: torch.Tensor) -> tuple[torch.Tensor]:
