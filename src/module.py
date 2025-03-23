@@ -9,7 +9,13 @@ from typing import Any
 import math
 
 
-class TS_BERT(nn.Module):
+class Empty(nn.Module):
+
+    def forward(self, x):
+        return x
+
+
+class TS_Transformer(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int, 
                  num_head: int = 6, num_layers: int = 6, 
@@ -106,7 +112,8 @@ class ImageEncoder(nn.Module):
 
 class BiModal(nn.Module):
 
-    def __init__(self, model_1: nn.Module, model_2: nn.Module, dim_embed: int):
+    def __init__(self, model_1: nn.Module, model_2: nn.Module, 
+                 dim_embed: int) -> None:
         super().__init__()
         self.model_1 = model_1
         self.model_2 = model_2
@@ -119,13 +126,14 @@ class BiModal(nn.Module):
     def encode_2(self, input):
         return self.projection_2(self.model_2(input))
 
-    def forward(self, input_1: torch.Tensor, input_2: torch.Tensor) -> tuple[torch.Tensor]:
+    def forward(self, input_1: torch.Tensor, 
+                input_2: torch.Tensor) -> tuple[torch.Tensor]:
         encoding_1 = self.encode_1(input_1)
         encoding_2 = self.encode_2(input_2)
         return encoding_1, encoding_2
 
 
-class CLIP(nn.Module):
+class CLIPLoss(nn.Module):
 
     def __init__(self) -> None:
         super().__init__()
@@ -135,19 +143,34 @@ class CLIP(nn.Module):
                 y: None|torch.Tensor = None) -> torch.Tensor:
         encoding_1 = encoding_1 / encoding_1.norm(dim=1, keepdim=True)
         encoding_2 = encoding_2 / encoding_2.norm(dim=1, keepdim=True)       
-        logits = (encoding_1 @ encoding_2.t()) * self.logit_scale.exp()
+        logits = (encoding_1 @ encoding_2.T) * self.logit_scale.exp()
         if y is None:
             labels = torch.arange(encoding_1.shape[0]).long().to(encoding_1.device)
         else:
             pass
         loss_1 = nn.functional.cross_entropy(logits, labels)
-        loss_2 = nn.functional.cross_entropy(logits.t(), labels)
+        loss_2 = nn.functional.cross_entropy(logits.T, labels)
         loss = (loss_1 + loss_2) / 2
         return loss
 
 
-class Empty(nn.Module):
+class RankLoss(nn.Module):
 
-    def forward(self, x):
-        return x
+    def __init__(self, margin: float) -> None:
+        self.margin = margin
 
+    def forward(self, encoding_1: torch.Tensor, 
+                encoding_2: torch.Tensor) -> torch.Tensor:
+        encoding_1 = encoding_1 / encoding_1.norm(dim=1, keepdim=True)
+        encoding_2 = encoding_2 / encoding_2.norm(dim=1, keepdim=True)       
+        logits = (encoding_1 @ encoding_2.T)
+
+        logits.diagonal().mul_(-1)
+        loss_1 = nn.functional.relu(self.margin + logits.sum(0)).sum()
+        loss_2 = nn.functional.relu(self.margin + logits.sum(1)).sum()
+        loss = (loss_1 + loss_2) / 2
+
+class DistanceLoss(nn.Module):
+
+    def
+        
