@@ -1,12 +1,7 @@
 import torch
-from torch import nn, optim
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-import torchvision
-import torchvision.transforms.v2 as v2
+from torch import nn
 from torchvision import models
 from typing import Any
-import math
 
 
 class Empty(nn.Module):
@@ -117,8 +112,10 @@ class BiModal(nn.Module):
         super().__init__()
         self.model_1 = model_1
         self.model_2 = model_2
-        self.projection_1 = nn.Linear(self.model_1.dim_out, dim_embed, bias=False)
-        self.projection_2 = nn.Linear(self.model_2.dim_out, dim_embed, bias=False)
+        self.projection_1 = nn.Linear(self.model_1.dim_out, 
+                                      dim_embed, bias=False)
+        self.projection_2 = nn.Linear(self.model_2.dim_out, 
+                                      dim_embed, bias=False)
 
     def encode_1(self, input):
         return self.projection_1(self.model_1(input))
@@ -133,21 +130,29 @@ class BiModal(nn.Module):
         return encoding_1, encoding_2
 
 
+class DistanceLoss(nn.Module):
+    
+    def forward(self, encoding_1: torch.Tensor, 
+                encoding_2: torch.Tensor) -> torch.Tensor:
+        residuals = torch.norm(encoding_1 - encoding_2, dim=1).pow(2)
+        loss = residuals.mean()
+        return loss
+
+
+# From https://arxiv.org/pdf/2103.00020
 class CLIPLoss(nn.Module):
 
     def __init__(self) -> None:
         super().__init__()
         self.logit_scale = nn.Parameter(torch.ones([]))
     
-    def forward(self, encoding_1: torch.Tensor, encoding_2: torch.Tensor, 
-                y: None|torch.Tensor = None) -> torch.Tensor:
+    def forward(self, encoding_1: torch.Tensor, 
+                encoding_2: torch.Tensor) -> torch.Tensor:
         encoding_1 = encoding_1 / encoding_1.norm(dim=1, keepdim=True)
         encoding_2 = encoding_2 / encoding_2.norm(dim=1, keepdim=True)       
         logits = (encoding_1 @ encoding_2.T) * self.logit_scale.exp()
-        if y is None:
-            labels = torch.arange(encoding_1.shape[0]).long().to(encoding_1.device)
-        else:
-            pass
+
+        labels = torch.arange(encoding_1.shape[0]).long().to(encoding_1.device)
         loss_1 = nn.functional.cross_entropy(logits, labels)
         loss_2 = nn.functional.cross_entropy(logits.T, labels)
         loss = (loss_1 + loss_2) / 2
@@ -157,6 +162,7 @@ class CLIPLoss(nn.Module):
 class RankLoss(nn.Module):
 
     def __init__(self, margin: float) -> None:
+        super().__init__()
         self.margin = margin
 
     def forward(self, encoding_1: torch.Tensor, 
@@ -169,8 +175,3 @@ class RankLoss(nn.Module):
         loss_1 = nn.functional.relu(self.margin + logits.sum(0)).sum()
         loss_2 = nn.functional.relu(self.margin + logits.sum(1)).sum()
         loss = (loss_1 + loss_2) / 2
-
-class DistanceLoss(nn.Module):
-
-    def
-        
