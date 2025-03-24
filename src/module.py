@@ -134,6 +134,8 @@ class DistanceLoss(nn.Module):
     
     def forward(self, encoding_1: torch.Tensor, 
                 encoding_2: torch.Tensor) -> torch.Tensor:
+        encoding_1 = encoding_1 / encoding_1.norm(dim=1, keepdim=True)
+        encoding_2 = encoding_2 / encoding_2.norm(dim=1, keepdim=True)       
         residuals = torch.norm(encoding_1 - encoding_2, dim=1).pow(2)
         loss = residuals.mean()
         return loss
@@ -172,6 +174,7 @@ class RankLoss(nn.Module):
         logits = (encoding_1 @ encoding_2.T)
 
         logits.diagonal().mul_(-1)
-        loss_1 = nn.functional.relu(self.margin + logits.sum(0)).sum()
-        loss_2 = nn.functional.relu(self.margin + logits.sum(1)).sum()
+        loss_1 = nn.functional.relu(self.margin + logits.sum(0)).mean()
+        loss_2 = nn.functional.relu(self.margin + logits.sum(1)).mean()
         loss = (loss_1 + loss_2) / 2
+        return loss
