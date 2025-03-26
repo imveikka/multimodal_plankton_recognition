@@ -48,4 +48,5 @@ def validate(model: nn.Module, classifier: nn.Module,
 def train(model: nn.Module, classifier: nn.Module, 
           crossmodal_criterion: nn.Module, 
           classification_criterion: nn.Module, 
-          train_loader: Dataloader, alpha: float)
+          train_loader: Dataloader, alpha: float):
+    pass

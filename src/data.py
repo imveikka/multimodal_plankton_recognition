@@ -1,5 +1,5 @@
 import torch
-from torch import nn
+from torch import nn, Tensor, functional as F
 from torch.utils.data import Dataset
 import torchvision
 from torchvision.transforms import v2
@@ -10,49 +10,49 @@ import random
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from sklearn.preprocessing import LabelEncoder
+from typing import Iterable, Dict
 
 
 class MultiSet(Dataset):
 
-    def __init__(self, data_path: Path, annotation_file: str,
-                 image_transforms: object, image_size: int | tuple[int],
-                 signal_transforms: object) -> None:
+
+    def __init__(self, annotation_path: Path, image_transforms: object,
+                 profile_transform: object, pair_augmentation: object) -> None:
         super().__init__()
 
-        self.data_path = data_path
-        self.annotation_file = annotation_file
-        self.table = pd.read_csv(data_path / annotation_file)
-        self.label_encoder = LabelEncoder().fit(self.table.class_name)
+        self.parent = annotation_path.parent
+        self.table = pd.read_csv(annotation_path)
 
-        self.X = self.table.X.tolist()
-        self.image_files = [data_path / f'images/{x}.jpg' for x in self.X]
-        self.signal_files = [data_path / f'others/{x}.csv' for x in self.X]
-        self.labels = self.table.class_name.to_list()
+        self.X = self.table.X.to_numpy()
+        self.image_files = [self.parent / f'images/{x}.jpg' for x in self.X]
+        self.profile_files = [self.parent / f'others/{x}.csv' for x in self.X]
+        self.labels = self.table.class_name.to_numpy()
+        self.class_names = np.unique(self.labels)
         
         self.image_transforms = image_transforms
-        self.signal_transforms = signal_transforms
-        self.augmentation = Augmentation(image_size=image_size)
-        self.image_size = image_size
+        self.profile_transform = profile_transform
+        self.pair_augmentation = pair_augmentation
+
 
     def __len__(self):
-        return len(self.image_files)
+        return len(self.X)
     
-    def __getitem__(self, index: int) -> tuple[torch.Tensor]:
+
+    def __getitem__(self, index: int) -> Dict[str, Tensor]:
         image = torchvision.io.decode_image(self.image_files[index])
-        signal = np.loadtxt(self.signal_files[index], delimiter=',', skiprows=1)  
-        signal = torch.tensor(signal)
+        profile = np.loadtxt(self.profile_files[index], delimiter=',', skiprows=1)  
+        profile = torch.tensor(profile)
 
         image = self.image_transforms(image)
-        signal = self.signal_transforms(signal)
-        y = self.label_encoder.transform([self.labels[index]])
+        profile = self.profile_transform(profile)
+        label = self.labels[index]
 
-        if self.annotation_file.startswith('train'):
-            image, signal = self.augmentation(image, signal)
+        if self.pair_augmentation:
+            image, profile = self.pair_augmentation(image, profile)
         else:
-            image = v2.functional.resize(image, self.image_size)
+            image = v2.functional.resize(image, (224, 224))
 
-        return image, signal, torch.tensor(y)
+        return {'image': image, 'profile': profile, 'label': label}
 
 
 class ImageTransforms(object):
@@ -67,53 +67,48 @@ class ImageTransforms(object):
         return image
 
 
-class SignalTransforms(object):
+class ProfileTransform(object):
+
 
     def __init__(self, max_len: int = None):
         self.min = torch.tensor([0, 0, 0, 0, 0, 0, -1])
-        self.max = torch.tensor([14850, 7360, 408, 7360, 7488, 7488, 1])
-        self.diff = self.max - self.min
+        self.diff = torch.tensor([14850, 7360, 408, 7360, 7488, 7488, 2])
         self.max_len = max_len
 
-    def __call__(self, signal: torch.Tensor) -> torch.Tensor:
-        signal = (signal - self.min) / self.diff
-        signal = signal.float()
+
+    def __call__(self, profile: torch.Tensor) -> torch.Tensor:
+        profile = (profile - self.min) / self.diff
+        profile = profile.float()
         if self.max_len:
-            signal = constrait_len(signal, max_len=self.max_len)
-        return signal
+            profile = constrait_len(profile, max_len=self.max_len)
+        return profile
 
 
-class Augmentation(object):
+class PairAugmentation(object):
 
-    def __init__(self, image_size=(224, 224)):
-        self.image_size = image_size
-        self.expanded = tuple(math.floor(1.1 * s) for s in self.image_size)
-        self.crop = v2.RandomCrop(self.image_size)
 
-    def __call__(self, image: torch.Tensor, signal: torch.Tensor) -> tuple[torch.Tensor]:
-        image = v2.functional.resize(image, self.expanded)
+    def __init__(self):
+        self.expand = v2.Resize((240, 240))
+        self.crop = v2.RandomCrop((224, 224))
+        self.jitter = v2.ColorJitter(0.5, 0.5)
+
+
+    def __call__(self, image: torch.Tensor, profile: torch.Tensor) -> tuple[torch.Tensor]:
+        bg = find_background_color(image)
+        image = self.expand(image)
         image = self.crop(image)
+        image += (5e-3 * torch.randn(image.shape[1:]))
+        profile += (5e-3 * torch.randn(profile.shape))
+        image = self.jitter(image)
         if random.randint(0, 1) == 0:
             image = v2.functional.vertical_flip(image)
-        image += (5e-3 * torch.randn(image.shape[1:]))
-        signal += (5e-3 * torch.randn(signal.shape))
         if random.randint(0, 1) == 0:
             image = v2.functional.horizontal_flip(image)
-            signal = signal.flip(0)
-        return image, signal
+            profile = profile.flip(0)
+        return image, profile
 
 
-def multi_collate(batch: list[tuple[torch.Tensor]]) -> tuple[torch.Tensor]:
-
-    image, signal, y = zip(*batch)
-    image = torch.stack(image)
-    signal = nn.utils.rnn.pad_sequence(signal, batch_first=True)
-    y = torch.cat(y)
-
-    return image, signal, y
-
-
-def find_background_color(image: torch.Tensor, p: int = 2) -> list[int]:
+def find_background_color(image: Tensor, p: int = 2) -> Iterable[int]:
 
     """
     Finds the background color from image. 
@@ -132,7 +127,7 @@ def find_background_color(image: torch.Tensor, p: int = 2) -> list[int]:
     ).mode(1).values.numpy()
 
 
-def square_pad(image: torch.Tensor, fill: int | list[int] = 0) -> torch.Tensor:
+def square_pad(image: Tensor, fill: int | Iterable[int] = 0) -> Tensor:
 
     """
     Pads an image to square shape.
@@ -146,16 +141,7 @@ def square_pad(image: torch.Tensor, fill: int | list[int] = 0) -> torch.Tensor:
     return v2.functional.pad(image, padding=padding, fill=fill)
 
 
-def get_class_images(main_folder_path, class_name):
-    folder_path = os.path.join(main_folder_path, class_name)
-    image_files = [
-        os.path.join(folder_path, f)
-        for f in os.listdir(folder_path)
-        if f.endswith((".jpg", ".png", ".jpeg"))
-    ]
-    return image_files
-
-def constrait_len(tensor: torch.Tensor, max_len: int = 512) -> torch.Tensor:
-    l, d = tensor.shape
-    return v2.functional.resize(tensor.unsqueeze(0), (max_len, d)).squeeze(0) \
-        if l > max_len else tensor
+def constrait_len(profile: Tensor, max_len: int = 512) -> Tensor:
+    l, d = profile.shape
+    return v2.functional.resize(profile.unsqueeze(0), (max_len, d)).squeeze(0) \
+        if l > max_len else profile
