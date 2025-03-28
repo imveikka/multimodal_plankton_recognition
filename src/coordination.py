@@ -6,7 +6,8 @@ from torch.nn import Module, Parameter, functional as F
 class DistanceLoss(Module):
     
 
-    def forward(self, image_emb: Tensor, profile_emb: Tensor) -> Tensor:
+    def forward(self, image_emb: Tensor, profile_emb: Tensor,
+                label: Tensor | None = None) -> Tensor:
         image_emb = image_emb / image_emb.norm(dim=1, keepdim=True)
         profile_emb = profile_emb / profile_emb.norm(dim=1, keepdim=True)       
         residuals = torch.norm(image_emb - profile_emb, dim=1).pow(2)
@@ -67,3 +68,10 @@ class RankLoss(Module):
         loss = (loss_1 + loss_2) / 2
 
         return loss
+    
+
+class Zero(Module):
+
+    
+    def forward(self, **kwargs):
+        return 0

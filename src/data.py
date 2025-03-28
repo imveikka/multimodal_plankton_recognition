@@ -25,7 +25,7 @@ class MultiSet(Dataset):
 
         self.X = self.table.X.to_numpy()
         self.image_files = [self.parent / f'images/{x}.jpg' for x in self.X]
-        self.profile_files = [self.parent / f'others/{x}.csv' for x in self.X]
+        self.profile_files = [self.parent / f'profiles/{x}.csv' for x in self.X]
         self.labels = self.table.class_name.to_numpy()
         self.class_names = np.unique(self.labels)
         
@@ -90,7 +90,7 @@ class PairAugmentation(object):
     def __init__(self):
         self.expand = v2.Resize((240, 240))
         self.crop = v2.RandomCrop((224, 224))
-        self.jitter = v2.ColorJitter(0.5, 0.5)
+        self.jitter = v2.ColorJitter(0.3, 0.3)
 
 
     def __call__(self, image: torch.Tensor, profile: torch.Tensor) -> tuple[torch.Tensor]:
