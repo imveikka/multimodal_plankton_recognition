@@ -2,7 +2,7 @@ import torch
 from torch import nn, Tensor, optim
 from typing import Dict, Any, Iterable, Callable
 from image_encoder import ImageEncoder
-from profile_encoder import ProfileTransformer
+from profile_encoder import ProfileTransformer, ProfileLSTM
 from coordination import *
 from lightning import LightningModule
 from sklearn.preprocessing import LabelEncoder
@@ -26,13 +26,16 @@ class BiModal(LightningModule):
         self.image_projection = nn.Linear(self.image_encoder.dim_out,
                                           dim_embed, bias=False)
         
-        self.profile_encoder = ProfileTransformer(**profile_encoder_args)
+        if 'num_head' in profile_encoder_args:
+            self.profile_encoder = ProfileTransformer(**profile_encoder_args)
+        else:
+            self.profile_encoder = ProfileLSTM(**profile_encoder_args)
         self.profile_projection = nn.Linear(self.profile_encoder.dim_out,
                                             dim_embed, bias=False)
 
         # Construct classifiers
-        layers = (dim_embed,) + classifier_args['dim_hidden_layers'] \
-               + (len(class_names),)
+        hidden = tuple(classifier_args['dim_hidden_layers'])
+        layers = (dim_embed,) + hidden + (len(class_names),)
         self.classifier_layers = nn.ModuleList([
             nn.Linear(dim_in, dim_out) for dim_in, dim_out in pairwise(layers)
         ])
@@ -80,13 +83,11 @@ class BiModal(LightningModule):
 
 
     def encode(self, image: Tensor | None, profile: Tensor | None, 
-               time: Tensor | None = None, padding_mask: Tensor | None = None,
                **kwargs) -> Dict[str, Tensor]:
 
         image_emb = self.safe_forward(self.image_encoder, image=image)
-        profile_emb = self.safe_forward(self.profile_encoder, 
-                                        profile=profile, time=time, 
-                                        padding_mask=padding_mask)
+        profile_emb = self.safe_forward(self.profile_encoder, profile=profile,
+                                        **kwargs)
 
         image_emb = self.safe_forward(self.image_projection,
                                       input=image_emb)

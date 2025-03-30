@@ -2,6 +2,11 @@
 runs
 logs
 
+# model cards
+*.yaml
+*.yml
+!example.yaml
+
 # .vscode
 .vscode
 

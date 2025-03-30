@@ -32,7 +32,7 @@ class ProfileTransformer(Module):
         self.dim_out = dim_out
     
     
-    def tokenize(self, profile: Tensor | Iterable[Tensor]) -> dict:
+    def tokenize(self, profile: Tensor | Iterable[Tensor]) -> Dict[str, Tensor]:
 
         if not isinstance(profile, (list, tuple)):
             profile = [profile]
@@ -60,3 +60,36 @@ class ProfileTransformer(Module):
 
         return x[:, 0]
 
+
+class ProfileLSTM(nn.Module):
+
+
+    def __init__(self, dim_in: int, dim_hidden: int, num_layers: int,
+                 dropout: float = 0.1) -> None:
+        super().__init__()
+
+        self.lstm = nn.LSTM(dim_in, dim_hidden, num_layers,
+                            batch_first=True, dropout=dropout)
+        self.norm = nn.LayerNorm(dim_hidden)
+        self.dim_out = dim_hidden
+
+
+    def tokenize(self, profile: Tensor | Iterable[Tensor]) -> Dict[str, Tensor]:
+
+        if not isinstance(profile, (list, tuple)):
+            profile = [profile]
+        
+        last = torch.tensor([p.shape[0] - 1 for p in profile]).long()
+        profile = nn.utils.rnn.pad_sequence(profile, batch_first=True)
+
+        return {'profile': profile, 'last_idx': last}
+
+
+    def forward(self, profile: Tensor, last_idx: Tensor,
+                **kwargs) -> Dict[str, Tensor]:
+
+        x, _ = self.lstm(profile)
+        x = x[torch.arange(x.shape[0]), last_idx]
+        x = self.norm(x)
+
+        return x

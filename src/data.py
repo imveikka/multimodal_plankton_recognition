@@ -88,23 +88,31 @@ class PairAugmentation(object):
 
 
     def __init__(self):
-        self.expand = v2.Resize((240, 240))
+        self.resize = v2.Resize((224, 224))
         self.crop = v2.RandomCrop((224, 224))
         self.jitter = v2.ColorJitter(0.3, 0.3)
 
 
     def __call__(self, image: torch.Tensor, profile: torch.Tensor) -> tuple[torch.Tensor]:
+
         bg = find_background_color(image)
-        image = self.expand(image)
-        image = self.crop(image)
-        image += (5e-3 * torch.randn(image.shape[1:]))
-        profile += (5e-3 * torch.randn(profile.shape))
+        image = self.resize(image)
+
+        angle = random.uniform(-10, 10)
+        translate = [random.randint(-5, -5), random.randint(-5, 5)]
+        scale = random.uniform(0.90, 1.10)
+        image = v2.functional.affine(image, angle, translate, scale, 
+                                     (0, 0), fill=bg)
+
+        image += (1e-3 * torch.randn(image.shape[1:]))
+        profile += (1e-3 * torch.randn(profile.shape))
         image = self.jitter(image)
         if random.randint(0, 1) == 0:
             image = v2.functional.vertical_flip(image)
         if random.randint(0, 1) == 0:
             image = v2.functional.horizontal_flip(image)
             profile = profile.flip(0)
+
         return image, profile
 
 
@@ -124,7 +132,7 @@ def find_background_color(image: Tensor, p: int = 2) -> Iterable[int]:
             image[:, :, -p:].reshape(3, -1),
         ], 
         dim=1
-    ).mode(1).values.numpy()
+    ).mode(1).values.tolist()
 
 
 def square_pad(image: Tensor, fill: int | Iterable[int] = 0) -> Tensor:

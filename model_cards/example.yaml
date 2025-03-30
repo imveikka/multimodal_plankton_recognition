@@ -1,0 +1,41 @@
+dataset: 'split'
+dim_embedding: 256
+max_len: &max_len 256
+bs: 32
+patience: 8
+
+image_encoder_args:
+  name: 'resnet18'
+  pretrained: false
+  num_classes: 0
+
+profile_encoder_args:
+  dim_in: 7
+  dim_out: 128
+  num_head: 4
+  num_layers: 6
+  dim_feedforward: 1024
+  dropout: 0.1
+  activation: 'gelu'
+  max_len: *max_len
+
+classifier_args:
+  dim_hidden_layers: [1024, 1024]
+  activation: 'gelu'
+  dropout: 0.1
+
+coordination_args:
+    'method': 'clip'  # distance, clip, or rank
+    #'margin': 5
+    'supervised': true
+    'alpha': .5
+
+optim_args:
+  'lr': 1.0e-4
+  'weight_decay': 1.0e-12
+
+trainer_args:
+  precision: '16-mixed'
+  min_epochs: 50
+  max_epochs: 200
+  accumulate_grad_batches: 4

@@ -33,6 +33,7 @@ class CLIPLoss(Module):
 
         if label is not None:
             label = (label == label.reshape(-1, 1)).float()
+            label /= label.sum(dim=1, keepdim=True)
         else:
             label = torch.arange(image_emb.shape[0]).long().to(image_emb.device)
 

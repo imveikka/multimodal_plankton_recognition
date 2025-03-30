@@ -12,19 +12,23 @@ Running this script following directories and files:
 *   ./images/: contains of all images where nested directory structures are
     flattened. Each image is renamed by it's respective label (X) from the
     annotation table
-*   ./others/: scatter and fluorence data of each sample, in which such data is
-    available. Stored in csv-files with same naming format as in images.
-*   /annotations.csv: New annotation table, where for each sample, the class
-    name, and information of available modalities is tabulated.
+*   ./profiles/: scatter and fluorescence data of each sample, in which such 
+    data is available. Stored in csv-files with same naming format as used 
+    with images.
+*   /annotations.csv: Global annotation table, where for each sample, the class
+    name, and information of available modalities is tabulated. Used to
+    generate train, validation and test splits.
 
-Once you have all the data downloaded, the preprocessing can be done by
+Download the data to zips/ directory. Samples of each class is stored in a
+separate zip file. Leave them as they are. Once you have all the data 
+downloaded, the preprocessing can be done by
 
     $ python preprocess.py
 
 Note that in order to re-run the script, previously created files and 
 directories must be removed before:
 
-    $ rm -rf images others annotations.csv
+    $ rm -rf images profiles annotations.csv
 """
 
 import zipfile
