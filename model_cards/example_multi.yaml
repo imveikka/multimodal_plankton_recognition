@@ -1,11 +1,11 @@
-dataset: 'split'
-dim_embedding: 256
+dataset: 'small'
+dim_embedding: 512
 max_len: &max_len 256
 bs: 32
 patience: 8
 
 image_encoder_args:
-  name: 'resnet18'
+  name: 'efficientnet_b0'
   pretrained: false
   num_classes: 0
 
@@ -20,7 +20,7 @@ profile_encoder_args:
   max_len: *max_len
 
 classifier_args:
-  dim_hidden_layers: [1024, 1024]
+  dim_hidden_layers: [1024,]
   activation: 'gelu'
   dropout: 0.1
 
@@ -32,7 +32,7 @@ coordination_args:
 
 optim_args:
   'lr': 1.0e-4
-  'weight_decay': 1.0e-12
+  'weight_decay': 1.0e-5
 
 trainer_args:
   precision: '16-mixed'

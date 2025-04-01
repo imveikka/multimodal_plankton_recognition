@@ -8,8 +8,8 @@ class DistanceLoss(Module):
 
     def forward(self, image_emb: Tensor, profile_emb: Tensor,
                 label: Tensor | None = None) -> Tensor:
-        image_emb = image_emb / image_emb.norm(dim=1, keepdim=True)
-        profile_emb = profile_emb / profile_emb.norm(dim=1, keepdim=True)       
+        # image_emb = image_emb / image_emb.norm(dim=1, keepdim=True)
+        # profile_emb = profile_emb / profile_emb.norm(dim=1, keepdim=True)       
         residuals = torch.norm(image_emb - profile_emb, dim=1).pow(2)
         loss = residuals.mean()
         return loss
@@ -29,7 +29,7 @@ class CLIPLoss(Module):
 
         image_emb = image_emb / image_emb.norm(dim=1, keepdim=True)
         profile_emb = profile_emb / profile_emb.norm(dim=1, keepdim=True)       
-        logits = (image_emb @ profile_emb.T) * self.logit_scale.exp()
+        logits = (image_emb @ profile_emb.T) / self.logit_scale.exp()
 
         if label is not None:
             label = (label == label.reshape(-1, 1)).float()

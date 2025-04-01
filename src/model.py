@@ -9,7 +9,7 @@ from sklearn.preprocessing import LabelEncoder
 from itertools import pairwise
 
 
-class BiModal(LightningModule):
+class MultiModel(LightningModule):
 
 
     def __init__(self, dim_embed, image_encoder_args: Dict[str, Any], 
@@ -33,7 +33,7 @@ class BiModal(LightningModule):
         self.profile_projection = nn.Linear(self.profile_encoder.dim_out,
                                             dim_embed, bias=False)
 
-        # Construct classifiers
+        # Construct classifier
         hidden = tuple(classifier_args['dim_hidden_layers'])
         layers = (dim_embed,) + hidden + (len(class_names),)
         self.classifier_layers = nn.ModuleList([
@@ -176,3 +176,147 @@ class BiModal(LightningModule):
        
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), **self.optim_args)
+
+
+class ImageModel(LightningModule):
+
+
+    def __init__(self, image_encoder_args: Dict[str, Any], 
+                 optim_args: Dict[str, Any],
+                 class_names: Iterable[str]) -> None:
+        super().__init__()
+
+        # Construct encoders
+        self.image_model = ImageEncoder(**image_encoder_args)
+
+        # loss
+        self.clas_loss = nn.CrossEntropyLoss()
+
+        # Miscellaneous
+        self.label_encoder = LabelEncoder().fit(class_names)
+        self.optim_args = optim_args
+
+
+    def name_to_id(self, label: str | Iterable[str]) -> Tensor:
+        if isinstance(label, str):
+            label = [label]
+        label = self.label_encoder.transform(label)
+        return torch.tensor(label).long()
+    
+
+    def id_to_name(self, label: Tensor) -> Iterable:
+        label = label.numpy()
+        label = self.label_encoder.inverse_transform(label)
+        return label
+
+
+    def forward(self, image, **kwargs) -> Dict[str, Tensor]:
+        logits = self.image_model(image)
+        return {'logits': logits}
+
+
+    def training_step(self, batch: Dict[str, Tensor], batch_idx: int) -> Tensor:
+
+        logits = self(**batch)['logits']
+        label = batch['label']
+
+        loss = self.clas_loss(logits, label)
+
+        metrics = {'Train/loss': loss}
+        self.log_dict(metrics)
+
+        return loss
+
+    
+    def validation_step(self, batch: Dict[str, Tensor],
+                        batch_idx: int) -> Tensor:
+
+        logits = self(**batch)['logits']
+        label = batch['label']
+
+        loss = self.clas_loss(logits, label)
+
+        metrics = {'Valid/loss': loss}
+        self.log_dict(metrics, on_epoch=True)
+
+       
+    def configure_optimizers(self):
+        return optim.Adam(self.parameters(), **self.optim_args)
+
+
+class ProfileModel(LightningModule):
+
+
+    def __init__(self, profile_encoder_args: Dict[str, Any], 
+                 optim_args: Dict[str, Any],
+                 class_names: Iterable[str]) -> None:
+        super().__init__()
+
+        # Construct encoders
+        if 'num_head' in profile_encoder_args:
+            self.profile_encoder = ProfileTransformer(**profile_encoder_args)
+        else:
+            self.profile_encoder = ProfileLSTM(**profile_encoder_args)
+
+        # classifier
+        self.fc = nn.Linear(self.profile_encoder.dim_out, len(class_names))
+
+        # loss
+        self.clas_loss = nn.CrossEntropyLoss()
+
+        # Miscellaneous
+        self.label_encoder = LabelEncoder().fit(class_names)
+        self.optim_args = optim_args
+
+
+    def name_to_id(self, label: str | Iterable[str]) -> Tensor:
+        if isinstance(label, str):
+            label = [label]
+        label = self.label_encoder.transform(label)
+        return torch.tensor(label).long()
+    
+
+    def id_to_name(self, label: Tensor) -> Iterable:
+        label = label.numpy()
+        label = self.label_encoder.inverse_transform(label)
+        return label
+
+
+    def tokenize(self, profile: Tensor) -> Dict[str, Tensor]:
+        return self.profile_encoder.tokenize(profile)    
+
+
+    def forward(self, profile, **kwargs) -> Dict[str, Tensor]:
+        embeddings = self.profile_encoder(profile, **kwargs)
+        logits = self.fc(embeddings)
+        return {'logits': logits}
+
+
+    def training_step(self, batch: Dict[str, Tensor], batch_idx: int) -> Tensor:
+
+        logits = self(**batch)['logits']
+        label = batch['label']
+
+        loss = self.clas_loss(logits, label)
+
+        metrics = {'Train/loss': loss}
+        self.log_dict(metrics)
+
+        return loss
+
+    
+    def validation_step(self, batch: Dict[str, Tensor],
+                        batch_idx: int) -> Tensor:
+
+        logits = self(**batch)['logits']
+        label = batch['label']
+
+        loss = self.clas_loss(logits, label)
+
+        metrics = {'Valid/loss': loss}
+        self.log_dict(metrics, on_epoch=True)
+
+       
+    def configure_optimizers(self):
+        return optim.Adam(self.parameters(), **self.optim_args)
+

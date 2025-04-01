@@ -7,10 +7,7 @@ import sys
 
 sys.path.append('./src')
 from src.data import MultiSet, ImageTransforms, ProfileTransform, PairAugmentation
-from src.profile_encoder import ProfileTransformer
-from src.image_encoder import ImageEncoder
-from src.model import BiModal
-from src.coordination import DistanceLoss, CLIPLoss, RankLoss
+from src.model import ProfileModel
 
 from lightning import Trainer
 from lightning.pytorch.loggers import TensorBoardLogger
@@ -28,14 +25,6 @@ with open(card, 'r') as stream:
 dataset = card_dict['dataset']
 max_len = card_dict['max_len']
 bs = card_dict['bs']
-dim_embedding = card_dict['dim_embedding']
-image_encoder_args = card_dict['image_encoder_args']
-profile_encoder_args = card_dict['profile_encoder_args']
-classifier_args = card_dict['classifier_args']
-coordination_args = card_dict['coordination_args']
-optim_args = card_dict['optim_args']
-trainer_args = card_dict['trainer_args']
-patience = card_dict['patience']
 
 data_path = Path('./data/CytoSense')
 
@@ -58,25 +47,21 @@ valid_set = MultiSet(annotation_path=data_path / f'{dataset}_valid.csv',
                     profile_transform=signal_transforms,
                     pair_augmentation=None)
 
-model = BiModal(
-    dim_embed=dim_embedding,
-    image_encoder_args=image_encoder_args,
-    profile_encoder_args=profile_encoder_args,
-    classifier_args=classifier_args,
-    coordination_args=coordination_args,
-    optim_args=optim_args,
+model = ProfileModel(
+    profile_encoder_args=card_dict['profile_encoder_args'],
+    optim_args=card_dict['optim_args'],
     class_names=train_set.class_names,
 )
 
 def multi_collate(batch, model=model):
 
-    image, profile, label = zip(*(sample.values() for sample in batch))
+    _, profile, label, _, profile_len = zip(*(sample.values() for sample in batch))
 
-    image_dict = {'image': torch.stack(image)}
-    profile_dict = model.profile_encoder.tokenize(profile)
-    label_dict = {'label': model.name_to_id(label)}
+    profile = model.tokenize(profile)
+    label = {'label': model.name_to_id(label)}
+    profile_len = {'profile_len': torch.stack(profile_len)}
 
-    return image_dict | profile_dict | label_dict
+    return profile | label | profile_len
 
 train_loader = DataLoader(dataset=train_set, batch_size=bs, 
                         shuffle=True, num_workers=8, 
@@ -91,14 +76,14 @@ valid_loader = DataLoader(dataset=valid_set, batch_size=bs,
 
 name = card.name.split('.')[0]
 logger = TensorBoardLogger(save_dir="logs/", name=name)
-stopper = EarlyStopping(monitor='Valid/loss_total', min_delta=0.0,
-                        patience=patience, mode='min')
+stopper = EarlyStopping(monitor='Valid/loss', min_delta=0.0,
+                        patience=card_dict['patience'], mode='min')
 
 trainer = Trainer(
     log_every_n_steps=len(train_loader),
     logger=logger,
     callbacks=[stopper],
-    **trainer_args
+    **card_dict['trainer_args']
 )
 
 trainer.fit(model, train_loader, valid_loader)

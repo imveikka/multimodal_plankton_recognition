@@ -5,7 +5,7 @@ logs
 # model cards
 *.yaml
 *.yml
-!example.yaml
+!example_*.yaml
 
 # .vscode
 .vscode
