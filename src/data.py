@@ -26,8 +26,8 @@ class MultiSet(Dataset):
         self.table = pd.read_csv(annotation_path)
 
         self.X = self.table.X.to_numpy()
-        self.image_files = [self.parent / f'images/{x}.jpg' for x in self.X]
-        self.profile_files = [self.parent / f'profiles/{x}.csv' for x in self.X]
+        self.image_files = [self.parent / f'../images/{x}.jpg' for x in self.X]
+        self.profile_files = [self.parent / f'../profiles/{x}.csv' for x in self.X]
         self.labels = self.table.class_name.to_numpy()
         self.class_names = np.unique(self.labels)
         

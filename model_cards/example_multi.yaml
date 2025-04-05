@@ -3,6 +3,7 @@ dim_embedding: 512
 max_len: &max_len 256
 bs: 32
 patience: 8
+save_top_k: 5
 
 image_encoder_args:
   name: 'efficientnet_b0'

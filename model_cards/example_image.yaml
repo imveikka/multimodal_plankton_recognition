@@ -1,22 +1,17 @@
 precision: 'medium'
 dataset: 'split'
-max_len: &max_len 256
 bs: 128
-patience: 50
+patience: 20
 save_top_k: 5
 
-profile_encoder_args:
-  dim_in: 7
-  num_head: 2
-  num_layers: 12
-  dim_feedforward: 128
+image_encoder_args:
+  name: 'vit_small_patch16_224'
+  pretrained: true
   dropout: 0.1
-  activation: 'gelu'
-  max_len: *max_len
   metadata: true
 
 optim_args:
-  lr: 1.0e-2
+  lr: 5.0e-3
   momentum: 0.9
   weight_decay: 1.0e-3
   nesterov: true
@@ -24,7 +19,7 @@ optim_args:
 trainer_args:
   precision: '16-mixed'
   min_epochs: 40
-  max_epochs: 300
+  max_epochs: 100
   accumulate_grad_batches: 1
   val_check_interval:
   check_val_every_n_epoch: 1

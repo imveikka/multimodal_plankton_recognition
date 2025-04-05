@@ -29,6 +29,8 @@ class ProfileTransformer(Module):
             num_layers=num_layers
         )
 
+        self.drop = nn.Dropout(dropout)
+
         self.dim_out += metadata
         self.metadata = metadata
     
@@ -63,7 +65,7 @@ class ProfileTransformer(Module):
             metadata = kwargs['profile_len'].to(profile.dtype)
             metadata /= profile.shape[1]
             x = torch.cat((x, metadata), 1)
-        return x
+        return self.drop(x)
 
 
 
@@ -76,6 +78,7 @@ class ProfileLSTM(nn.Module):
 
         self.lstm = nn.LSTM(dim_in, dim_hidden, num_layers,
                             batch_first=True, dropout=dropout)
+        self.drop = nn.Dropout(dropout)
         self.dim_out = dim_hidden + metadata
         self.metadata = metadata
 
@@ -101,4 +104,4 @@ class ProfileLSTM(nn.Module):
             metadata /= profile.shape[1]
             x = torch.cat((x, metadata), 1)
 
-        return x
+        return self.drop(x)

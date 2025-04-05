@@ -13,7 +13,7 @@ if __name__ == "__main__":
         "-s", 
         "--seed",
         type=int,
-        default=42,
+        default=None,
         help="Seed for reproducibility"
     )
 
@@ -28,7 +28,7 @@ if __name__ == "__main__":
         "-t",
         "--trainsize",
         type=int,
-        default=50,
+        default=32,
         help="Number of samples of each class in train set."
     )
 
@@ -36,7 +36,7 @@ if __name__ == "__main__":
         "-v",
         "--validsize",
         type=int,
-        default=10,
+        default=16,
         help="Number of samples of each class in validation set."
     )
 
@@ -44,13 +44,13 @@ if __name__ == "__main__":
         "-m",
         "--minsize",
         type=int,
-        default=50,
+        default=64,
         help="Minimum size to not be omitted from the dataset."
     )
 
     args = parser.parse_args()
 
-    data_dir = Path('.')
+    data_dir = Path(f'.')
     image_dir = data_dir / 'images'
     profile_dir = data_dir / 'profiles'
     annotations = pd.read_csv(data_dir / 'annotations.csv')
@@ -99,12 +99,17 @@ if __name__ == "__main__":
     n = (counts >= args.minsize).sum()
     
     name = args.name
-    train.to_csv(data_dir / f'{name}_train.csv')
-    test.to_csv(data_dir /  f'{name}_test.csv')
-    valid.to_csv(data_dir / f'{name}_valid.csv')
-    short.to_csv(data_dir / f'{name}_short.csv')
+    annot_dir = data_dir / name
+
+    if not annot_dir.exists():
+        annot_dir.mkdir()
+
+    train.to_csv(annot_dir / f'{name}_train.csv')
+    test.to_csv(annot_dir /  f'{name}_test.csv')
+    valid.to_csv(annot_dir / f'{name}_valid.csv')
+    short.to_csv(annot_dir / f'{name}_short.csv')
 
     print(
         f'Dataset of {n} classes created to annotation\n' \
-        + f'files {name}_[train/test/valid/short].csv.'
+        + f'files {name}/{name}_[train/test/valid/short].csv.'
     )

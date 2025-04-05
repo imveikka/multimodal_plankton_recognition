@@ -4,6 +4,7 @@ from pathlib import Path
 import yaml
 import argparse
 import sys
+import json
 
 sys.path.append('./src')
 from src.data import MultiSet, ImageTransforms, ProfileTransform, PairAugmentation
@@ -11,7 +12,7 @@ from src.model import ProfileModel
 
 from lightning import Trainer
 from lightning.pytorch.loggers import TensorBoardLogger
-from lightning.pytorch.callbacks import EarlyStopping
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-m", "--modelcard", help="Path to model card (yaml file).")
@@ -22,11 +23,16 @@ card = Path(args.modelcard)
 with open(card, 'r') as stream:
     card_dict = yaml.safe_load(stream)
 
+print(json.dumps(card_dict, indent=4))
+
+
+precision = card_dict.get('precision', 'highest')
+torch.set_float32_matmul_precision(precision)
 dataset = card_dict['dataset']
 max_len = card_dict['max_len']
 bs = card_dict['bs']
 
-data_path = Path('./data/CytoSense')
+data_path = Path(f'./data/CytoSense/{dataset}')
 
 image_transforms = ImageTransforms()
 signal_transforms = ProfileTransform(max_len=max_len)
@@ -64,26 +70,34 @@ def multi_collate(batch, model=model):
     return profile | label | profile_len
 
 train_loader = DataLoader(dataset=train_set, batch_size=bs, 
-                        shuffle=True, num_workers=8, 
+                        shuffle=True, num_workers=4, 
                         drop_last=True, collate_fn=multi_collate)
 
-test_loader = DataLoader(dataset=test_set, batch_size=bs, 
-                         num_workers=8, collate_fn=multi_collate)
+test_loader = DataLoader(dataset=test_set, batch_size=16, 
+                         num_workers=4, collate_fn=multi_collate)
 
-valid_loader = DataLoader(dataset=valid_set, batch_size=bs, 
-                         num_workers=8, drop_last=True, 
+valid_loader = DataLoader(dataset=valid_set, batch_size=32, 
+                         num_workers=4, drop_last=True, 
                          collate_fn=multi_collate)
 
 name = card.name.split('.')[0]
 logger = TensorBoardLogger(save_dir="logs/", name=name)
-stopper = EarlyStopping(monitor='Valid/loss', min_delta=0.0,
+
+checkpoint = ModelCheckpoint(
+        filename="{epoch}_{valid_loss:.2f}",
+        monitor="valid_loss",
+        save_top_k=card_dict.get('save_top_k', 1),
+        mode="min"
+)
+stopper = EarlyStopping(monitor='valid_loss', min_delta=0.0,
                         patience=card_dict['patience'], mode='min')
 
 trainer = Trainer(
     log_every_n_steps=len(train_loader),
     logger=logger,
-    callbacks=[stopper],
+    callbacks=[checkpoint, stopper],
     **card_dict['trainer_args']
 )
 
 trainer.fit(model, train_loader, valid_loader)
+trainer.test(model, test_loader, ckpt_path='best')
