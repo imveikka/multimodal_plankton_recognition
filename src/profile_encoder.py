@@ -8,20 +8,19 @@ from typing import Iterable, Dict
 class ProfileTransformer(Module):
 
 
-    def __init__(self, dim_in: int, max_len: int,
+    def __init__(self, dim_in: int, dim_hidden: int, max_len: int,
                  num_head: int, num_layers: int = 6,
                  dim_feedforward: int = 2024, dropout: float = 0.1, 
                  activation: str = 'gelu', metadata: bool = True) -> None:
         super().__init__()
 
-        self.dim_out = dim_in + (dim_in % num_head)
-        self.pad = nn.ZeroPad2d((0, 1, 0, 0))
-        self.position = nn.Embedding(max_len + 2, self.dim_out, padding_idx=-1)
+        self.expand = nn.Linear(dim_in, dim_hidden, bias=False)
+        self.position = nn.Embedding(max_len + 2, dim_hidden, padding_idx=-1)
         self.padding_idx = self.position.padding_idx
 
         self.encoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
-                d_model=self.dim_out, nhead=num_head, 
+                d_model=dim_hidden, nhead=num_head, 
                 dim_feedforward=dim_feedforward,
                 dropout=dropout, activation=activation, 
                 batch_first=True
@@ -31,7 +30,7 @@ class ProfileTransformer(Module):
 
         self.drop = nn.Dropout(dropout)
 
-        self.dim_out += metadata
+        self.dim_out = dim_hidden + metadata
         self.metadata = metadata
     
     
@@ -57,7 +56,7 @@ class ProfileTransformer(Module):
     def forward(self, profile: Tensor, time: Tensor,
                 padding_mask: Tensor, **kwargs) -> Dict[str, Tensor]:
 
-        x = self.pad(profile)
+        x = self.expand(profile)
         x = x + self.position(time)
         x = self.encoder(x, src_key_padding_mask=padding_mask)
         x = x[:, 0]

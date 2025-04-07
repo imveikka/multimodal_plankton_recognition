@@ -43,6 +43,7 @@ class MultiSet(Dataset):
     def __getitem__(self, index: int) -> Dict[str, Tensor]:
         image = cv2.imread(self.image_files[index], cv2.IMREAD_GRAYSCALE)
         profile = np.loadtxt(self.profile_files[index], delimiter=',', skiprows=1)  
+        profile = profile[:, [0, 1, 3, 4, 5]]
         profile = torch.tensor(profile)
 
         image_shape = torch.tensor(image.shape)
@@ -78,13 +79,14 @@ class ProfileTransform(object):
 
 
     def __init__(self, max_len: int = None):
-        self.min = torch.tensor([0, 0, 0, 0, 0, 0, -1])
-        self.diff = torch.tensor([14850, 7360, 408, 7360, 7488, 7488, 2])
+        # self.min = torch.tensor([0, 0, 0, 0, 0, 0, -1])
+        # self.diff = torch.tensor([14850, 7360, 408, 7360, 7488, 7488, 2])
         self.max_len = max_len
 
 
     def __call__(self, profile: torch.Tensor) -> torch.Tensor:
-        profile = (profile - self.min) / self.diff
+        # profile = (profile - self.min) / self.diff
+        profile = profile.add(1).log()
         profile = profile.float()
         if self.max_len:
             profile = resize_profile(profile, max_len=self.max_len)

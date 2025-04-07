@@ -1,28 +1,29 @@
 precision: 'medium'
-dataset: 'split'
+dataset: 'small'
 max_len: &max_len 256
-bs: 128
+bs: 64
 patience: 50
 save_top_k: 5
 
 profile_encoder_args:
-  dim_in: 7
+  dim_in: 5
+  dim_hidden: 16
   num_head: 2
   num_layers: 12
-  dim_feedforward: 128
+  dim_feedforward: 64
   dropout: 0.1
   activation: 'gelu'
   max_len: *max_len
   metadata: true
 
 optim_args:
-  lr: 1.0e-2
+  lr: 5.0e-3
   momentum: 0.9
   weight_decay: 1.0e-3
   nesterov: true
 
 trainer_args:
-  precision: '16-mixed'
+  precision: '32'
   min_epochs: 40
   max_epochs: 300
   accumulate_grad_batches: 1
