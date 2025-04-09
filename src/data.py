@@ -25,9 +25,9 @@ class MultiSet(Dataset):
         self.parent = annotation_path.parent
         self.table = pd.read_csv(annotation_path)
 
-        self.X = self.table.X.to_numpy()
-        self.image_files = [self.parent / f'../images/{x}.jpg' for x in self.X]
-        self.profile_files = [self.parent / f'../profiles/{x}.csv' for x in self.X]
+        self.id = self.table.ID.to_numpy()
+        self.image_files = [self.parent / f'../images/{id}.jpg' for id in self.id]
+        self.profile_files = [self.parent / f'../profiles/{id}.csv' for id in self.id]
         self.labels = self.table.class_name.to_numpy()
         self.class_names = np.unique(self.labels)
         
@@ -37,7 +37,7 @@ class MultiSet(Dataset):
 
 
     def __len__(self):
-        return len(self.X)
+        return len(self.id)
     
 
     def __getitem__(self, index: int) -> Dict[str, Tensor]:
@@ -78,18 +78,11 @@ class ProfileTransform(object):
 
 
     def __init__(self, max_len: int = None):
-        self.min = torch.tensor([0, 0, 0, 0, 0, 0, -1])
-        self.diff = torch.tensor([14850, 7360, 408, 7360, 7488, 7488, 2])
         self.max_len = max_len
 
 
     def __call__(self, profile: torch.Tensor) -> torch.Tensor:
-        # profile = profile[:, [0, 1, 3, 4, 5]]
-        # profile = (profile - self.min) / self.diff
-        profile = profile[:, :-1].add(1).log()
-        # profile = profile[:, [0, 1, 3, 4, 5]].add(1).log()
-        # profile = profile[:, :-1]
-        profile = profile.float()
+        profile = profile.add(1).log().float()
         if self.max_len:
             profile = resize_profile(profile, max_len=self.max_len)
         return profile
@@ -132,7 +125,7 @@ def cover_scale(image: np.ndarray, bg: np.ndarray,
 
 
 def find_background_stats(image: Tensor, p: int = 2,
-                          closest: float = 0.90) -> Iterable[int]:
+                          closest: float = 0.80) -> Iterable[int]:
 
     """
     Finds the background statistics from image. 

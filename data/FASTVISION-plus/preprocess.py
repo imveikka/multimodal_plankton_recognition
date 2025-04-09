@@ -1,5 +1,5 @@
 """
-Preparation of multimodal CytoSense data.
+(Copy) Preparation of multimodal CytoSense data.
 
 Author: Veikka Immonen
 
@@ -31,10 +31,8 @@ directories must be removed before:
     $ rm -rf images profiles annotations.csv
 """
 
-import zipfile
 from pathlib import Path
 import pandas as pd
-from tqdm import tqdm
 import shutil
 from multiprocessing import Pool
 
@@ -44,7 +42,7 @@ if __name__ == '__main__':
     img_path = root / 'images'          # image data
     mod_path = root / 'profiles'        # optical profiles
     annot_path = root / 'annotations.csv'
-    zips_path = root / 'zips'
+    orig_path = root / 'CS_ImageExp'
 
     assert not any(map(lambda x: x.exists(), [img_path, mod_path, annot_path])), \
     """
@@ -55,44 +53,31 @@ if __name__ == '__main__':
     img_path.mkdir()
     mod_path.mkdir()
     
-    archives = list(filter(lambda x: x.name.endswith('.zip'), zips_path.iterdir()))
-    table = pd.read_csv('./Pulse-shapes_annotated_CS_images.csv', low_memory=False)
-    table = table.dropna()
+    table = pd.read_csv(orig_path / 'Pulse-shapes_CS_images_FastVISION-plus_exp22.csv', low_memory=False)
     annotations = pd.DataFrame({'ID': [], 'class_name': []})
 
-    # unzip the archives
-    for archive in archives:
-        with zipfile.ZipFile(archive, 'r') as zip_ref:
-            zip_ref.extractall(img_path)
-
-    def process(id, x, table=table):
-
-        samples = table[table.X == x]
+    def process(id, file_id, table=table):
+        samples = table[table.file_id == file_id]
         file_id = samples.file_id.iloc[0]
-
+        class_name = samples.sp.iloc[0]
         info = pd.DataFrame({
-            'ID': [id], 'class_name': [samples.classes.iloc[0]],
+            'ID': [id], 'class_name': [class_name],
         })
-
-        (img_path / f'{file_id}.jpg').rename(img_path / f'{x}.jpg')
-
-        profile = samples.iloc[:, -7:-1]
+        shutil.copy(orig_path / class_name / f'{file_id}.jpg',
+                    img_path / f'{id}.jpg')
+        profile = samples.iloc[:, -6:]
         profile = profile.loc[(profile != 0).all(axis=1)]
         profile.columns = ['FSC', 'SSC', 'Green', 'Yellow', 'Orange', 'Red']
         profile.to_csv(mod_path / f'{id}.csv', index=False)
-
         return info
 
     # preprocess using the table
-    annotations = enumerate(table.X.unique(), 1)
+    annotations = enumerate(table.file_id.unique(), 1)
     with Pool() as pool:
         annotations = pool.starmap(process, annotations)
 
     annotations = pd.concat(annotations, ignore_index=True)
+
     annotations.ID = annotations.ID.astype(int)
     annotations.to_csv('annotations.csv', index=False)
-
-    # remove empty directories
-    for path in filter(lambda x: x.is_dir(), img_path.rglob('*')):
-        shutil.rmtree(path)
 

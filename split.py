@@ -10,6 +10,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
+        "-d", 
+        "--dataset",
+        help="Dataset, location of annotation file and directories images/ and profiles/"
+    )
+
+    parser.add_argument(
         "-s", 
         "--seed",
         type=int,
@@ -21,7 +27,7 @@ if __name__ == "__main__":
         "-n", 
         "--name",
         default="split",
-        help="Annotation table name: [name]_[train/valid/test/short].csv."
+        help="Annotation table name: [name]/[train/valid/test].csv."
     )
 
     parser.add_argument(
@@ -50,32 +56,27 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    data_dir = Path(f'.')
+    data_dir = Path(args.dataset)
     image_dir = data_dir / 'images'
     profile_dir = data_dir / 'profiles'
     annotations = pd.read_csv(data_dir / 'annotations.csv')
-    annotations = annotations[~(annotations.iloc[:, -2:] == False).all(axis=1)]
 
-    mask = (annotations == False).any(axis=1)
-    unimodal = annotations[mask]
-    multimodal = annotations[~mask]
-    class_names, counts = np.unique(multimodal.class_name, return_counts=True)
+    class_names, counts = np.unique(annotations.class_name, return_counts=True)
     
-    train = pd.DataFrame(columns=multimodal.columns)
-    test = pd.DataFrame(columns=multimodal.columns)
-    valid = pd.DataFrame(columns=multimodal.columns)
-    short = pd.DataFrame(columns=multimodal.columns)
+    train = pd.DataFrame(columns=annotations.columns)
+    test = pd.DataFrame(columns=annotations.columns)
+    valid = pd.DataFrame(columns=annotations.columns)
 
     for name, count in zip(class_names, counts):
 
         if count < args.minsize:
             continue
 
-        annot = multimodal[multimodal.class_name == name]
+        annot = annotations[annotations.class_name == name]
         train_annot, test_annot = train_test_split(annot, train_size=.5)
 
         if len(train_annot) < args.trainsize:
-            temp = train_annot.sample(n=args.trainsize - len(train_annot))
+            temp = train_annot.sample(n=args.trainsize-len(train_annot))
             train_annot = pd.concat([train_annot, temp])
         elif len(train_annot) > args.trainsize:
             train_annot, temp = train_test_split(
@@ -92,9 +93,6 @@ if __name__ == "__main__":
         train = pd.concat([train, train_annot])
         test = pd.concat([test, test_annot])
         valid = pd.concat([valid, valid_annot])
-
-        short_annot = unimodal[unimodal.class_name == name]
-        short = pd.concat([short, short_annot])
     
     n = (counts >= args.minsize).sum()
     
@@ -104,12 +102,11 @@ if __name__ == "__main__":
     if not annot_dir.exists():
         annot_dir.mkdir()
 
-    train.to_csv(annot_dir / f'{name}_train.csv')
-    test.to_csv(annot_dir /  f'{name}_test.csv')
-    valid.to_csv(annot_dir / f'{name}_valid.csv')
-    short.to_csv(annot_dir / f'{name}_short.csv')
+    train.to_csv(annot_dir / f'train.csv')
+    test.to_csv(annot_dir /  f'test.csv')
+    valid.to_csv(annot_dir / f'valid.csv')
 
     print(
         f'Dataset of {n} classes created to annotation\n' \
-        + f'files {name}/{name}_[train/test/valid/short].csv.'
+        + f'files {name}/[train/test/valid].csv.'
     )

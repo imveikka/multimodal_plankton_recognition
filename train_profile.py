@@ -38,17 +38,17 @@ image_transforms = ImageTransforms()
 signal_transforms = ProfileTransform(max_len=max_len)
 pair_augmentation = PairAugmentation()
 
-train_set = MultiSet(annotation_path=data_path / f'{dataset}_train.csv', 
+train_set = MultiSet(annotation_path=data_path / f'train.csv', 
                    image_transforms=image_transforms,
                    profile_transform=signal_transforms,
                    pair_augmentation=pair_augmentation)
 
-test_set = MultiSet(annotation_path=data_path / f'{dataset}_test.csv', 
+test_set = MultiSet(annotation_path=data_path / f'test.csv', 
                     image_transforms=image_transforms,
                     profile_transform=signal_transforms,
                     pair_augmentation=None)
 
-valid_set = MultiSet(annotation_path=data_path / f'{dataset}_valid.csv', 
+valid_set = MultiSet(annotation_path=data_path / f'valid.csv', 
                     image_transforms=image_transforms,
                     profile_transform=signal_transforms,
                     pair_augmentation=None)
