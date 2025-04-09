@@ -15,6 +15,7 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 
 parser = argparse.ArgumentParser()
+parser.add_argument("-d", "--dataset", help="Location to dataset tables.")
 parser.add_argument("-m", "--modelcard", help="Path to model card (yaml file).")
 args = parser.parse_args()
 
@@ -27,10 +28,10 @@ print(json.dumps(card_dict, indent=4))
 
 precision = card_dict.get('precision', 'highest')
 torch.set_float32_matmul_precision(precision)
-dataset = card_dict['dataset']
 bs = card_dict['bs']
 
-data_path = Path(f'./data/CytoSense/{dataset}')
+data_path = Path(f'{args.dataset}')
+dataset = data_path.name
 
 image_transforms = ImageTransforms()
 signal_transforms = ProfileTransform(max_len=0)
@@ -57,7 +58,6 @@ model = ImageModel(
     class_names=train_set.class_names,
 )
 
-
 def multi_collate(batch, model=model):
 
     image, _, label, image_shape, _ = zip(*(sample.values() for sample in batch))
@@ -65,7 +65,6 @@ def multi_collate(batch, model=model):
     image = {'image': torch.stack(image)}
     label = {'label': model.name_to_id(label)}
     image_shape = {'image_shape': torch.stack(image_shape)}
-
 
     return image| label | image_shape
 
@@ -90,7 +89,8 @@ checkpoint = ModelCheckpoint(
         mode="min"
 )
 stopper = EarlyStopping(monitor='valid_loss', min_delta=0.0,
-                        patience=card_dict['patience'], mode='min')
+                        patience=card_dict['patience'],
+                        check_finite=False, mode='min')
 
 n = card_dict.get('accumulate_grad_batches', 1)
 trainer = Trainer(

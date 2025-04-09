@@ -3,7 +3,7 @@ from torch import nn, Tensor, optim
 from torchvision.transforms.v2.functional import pil_to_tensor
 from typing import Dict, Any, Iterable, Callable
 from image_encoder import ImageEncoder
-from profile_encoder import ProfileTransformer, ProfileLSTM
+from profile_encoder import ProfileCNN, ProfileTransformer, ProfileLSTM
 from coordination import *
 from lightning import LightningModule
 from sklearn.preprocessing import LabelEncoder
@@ -24,8 +24,7 @@ class MultiModel(LightningModule):
                  classifier_args: Dict[str, Any],
                  coordination_args: Dict[str, Any],
                  optim_args: Dict[str, Any],
-                 class_names: Iterable[str],
-                 supervised_coordination: bool = False) -> None:
+                 class_names: Iterable[str]) -> None:
         super().__init__()
         self.save_hyperparameters()
 
@@ -337,6 +336,8 @@ class ProfileModel(LightningModule):
         # Construct encoders
         if 'num_head' in profile_encoder_args:
             self.profile_encoder = ProfileTransformer(**profile_encoder_args)
+        elif 'blocks' in profile_encoder_args:
+            self.profile_encoder = ProfileCNN(**profile_encoder_args)
         else:
             self.profile_encoder = ProfileLSTM(**profile_encoder_args)
 
@@ -356,7 +357,6 @@ class ProfileModel(LightningModule):
         self.valid_true = []
         self.test_pred = []
         self.test_true = []
-
 
 
     def name_to_id(self, label: str | Iterable[str]) -> Tensor:
@@ -388,11 +388,19 @@ class ProfileModel(LightningModule):
         label = batch['label']
 
         loss = self.clas_loss(logits, label)
+        self.train_loss.append(loss.detach())
+
+        return loss
+
+
+    def on_train_epoch_end(self) -> None:
+        loss = torch.stack(self.train_loss)
+        loss = loss.mean()
 
         metrics = {'train_loss': loss, 'step': self.current_epoch}
         self.log_dict(metrics)
 
-        return loss
+        self.train_loss.clear()
 
     
     def validation_step(self, batch: Dict[str, Tensor],

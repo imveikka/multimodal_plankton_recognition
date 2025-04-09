@@ -15,6 +15,7 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 
 parser = argparse.ArgumentParser()
+parser.add_argument("-d", "--dataset", help="Location to dataset tables.")
 parser.add_argument("-m", "--modelcard", help="Path to model card (yaml file).")
 args = parser.parse_args()
 
@@ -25,14 +26,13 @@ with open(card, 'r') as stream:
 
 print(json.dumps(card_dict, indent=4))
 
-
 precision = card_dict.get('precision', 'highest')
 torch.set_float32_matmul_precision(precision)
-dataset = card_dict['dataset']
-max_len = card_dict['max_len']
+max_len = card_dict.get('max_len')
 bs = card_dict['bs']
 
-data_path = Path(f'./data/CytoSense/{dataset}')
+data_path = Path(f'{args.dataset}')
+dataset = data_path.name
 
 image_transforms = ImageTransforms()
 signal_transforms = ProfileTransform(max_len=max_len)
@@ -90,7 +90,8 @@ checkpoint = ModelCheckpoint(
         mode="min"
 )
 stopper = EarlyStopping(monitor='valid_loss', min_delta=0.0,
-                        patience=card_dict['patience'], mode='min')
+                        patience=card_dict['patience'],
+                        check_finite=False, mode='min')
 
 trainer = Trainer(
     log_every_n_steps=len(train_loader),

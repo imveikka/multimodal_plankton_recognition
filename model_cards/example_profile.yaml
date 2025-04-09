@@ -1,16 +1,15 @@
 precision: 'medium'
-dataset: 'small'
 max_len: &max_len 256
 bs: 64
-patience: 50
+patience: 20
 save_top_k: 5
 
 profile_encoder_args:
   dim_in: 5
-  dim_hidden: 16
+  dim_hidden: 64
   num_head: 2
-  num_layers: 12
-  dim_feedforward: 64
+  num_layers: 6
+  dim_feedforward: 256
   dropout: 0.1
   activation: 'gelu'
   max_len: *max_len
@@ -23,7 +22,7 @@ optim_args:
   nesterov: true
 
 trainer_args:
-  precision: '32'
+  precision: '16-mixed'
   min_epochs: 40
   max_epochs: 300
   accumulate_grad_batches: 1

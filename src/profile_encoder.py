@@ -1,3 +1,4 @@
+from pandas.core import base
 import torch
 from torch import Tensor
 from torch import nn
@@ -54,7 +55,7 @@ class ProfileTransformer(Module):
 
 
     def forward(self, profile: Tensor, time: Tensor,
-                padding_mask: Tensor, **kwargs) -> Dict[str, Tensor]:
+                padding_mask: Tensor, **kwargs) -> Tensor:
 
         x = self.expand(profile)
         x = x + self.position(time)
@@ -68,7 +69,7 @@ class ProfileTransformer(Module):
 
 
 
-class ProfileLSTM(nn.Module):
+class ProfileLSTM(Module):
 
 
     def __init__(self, dim_in: int, dim_hidden: int, num_layers: int,
@@ -94,7 +95,7 @@ class ProfileLSTM(nn.Module):
 
 
     def forward(self, profile: Tensor, last_idx: Tensor,
-                **kwargs) -> Dict[str, Tensor]:
+                **kwargs) -> Tensor:
 
         x, _ = self.lstm(profile)
         x = x[torch.arange(x.shape[0]), last_idx]
@@ -104,3 +105,136 @@ class ProfileLSTM(nn.Module):
             x = torch.cat((x, metadata), 1)
 
         return self.drop(x)
+
+
+class _BasicBlock(Module):
+
+
+    expansion = 1
+    def __init__(self, in_channels: int, out_channels: int, stride: int,
+                 downsample: Module | None = None, groups: int = 1,
+                 base_channels: int = 64) -> None:
+        super().__init__()
+
+        self.stride = stride
+        self.downsample = downsample
+        self.groups = groups
+        self.base_channels = base_channels
+
+        self.conv1 = nn.Conv1d(in_channels, out_channels, 3, stride, 1, bias=False)
+        self.bn1 = nn.BatchNorm1d(out_channels)
+        self.relu = nn.ReLU(True)
+        self.conv2 = nn.Conv1d(out_channels, out_channels, 3, 1, 1, bias=False)
+        self.bn2 = nn.BatchNorm1d(out_channels)
+
+
+    def forward(self, x: Tensor) -> Tensor:
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out = torch.add(out, identity)
+        out = self.relu(out)
+
+        return out
+
+
+class ProfileCNN(Module):
+
+    """
+    ResNet-based CNN, adapted from https://github.com/Lornatang/ResNet-PyTorch/blob/main/model.py
+    """
+
+    def __init__(self, dim_in, blocks: list[int], groups: int = 1,
+                 block_type: type[_BasicBlock] = _BasicBlock,
+                 base_channels: int = 32,
+                 dropout = 0.1, metadata: bool = True) -> None:
+
+        super().__init__()
+        self.in_channels = self.base_channels = base_channels
+        self.dilation = 1
+        self.groups = groups
+
+        self.conv1 = nn.Conv1d(dim_in, self.in_channels, 3, 2, 1, bias=False)
+        self.bn1 = nn.BatchNorm1d(self.in_channels)
+        self.relu = nn.ReLU(True)
+        self.maxpool = nn.MaxPool1d(3, 2, 1)
+
+        self.layer1 = self._make_layer(blocks[0], base_channels, block_type, 1)
+        self.layer2 = self._make_layer(blocks[1], base_channels * 2, block_type, 2)
+        self.layer3 = self._make_layer(blocks[2], base_channels * 4, block_type, 2)
+        self.layer4 = self._make_layer(blocks[3], base_channels * 8, block_type, 2)
+
+        self.avgpool = nn.AdaptiveMaxPool1d(1)
+        self.drop = nn.Dropout(dropout)
+
+        self.dim_out = base_channels * 8 + metadata
+        self.metadata = metadata
+
+
+    def _make_layer(self, repeat_times: int,channels: int, 
+                    block_type: type[_BasicBlock] = _BasicBlock,
+                    stride: int = 1) -> nn.Sequential:
+        downsample = None
+
+        if stride != 1 or self.in_channels != channels * block_type.expansion:
+            downsample = nn.Sequential(
+                nn.Conv1d(self.in_channels, channels * block_type.expansion, 1, stride, 0, bias=False),
+                nn.BatchNorm1d(channels * block_type.expansion),
+            )
+
+        layers = [block_type(self.in_channels, channels, stride, downsample,
+                             self.groups, self.base_channels)]
+
+        self.in_channels = channels * block_type.expansion
+        for _ in range(1, repeat_times):
+            layers.append(block_type(self.in_channels, channels, 1,
+                                     None, self.groups, self.base_channels))
+
+        return nn.Sequential(*layers)
+
+
+    def tokenize(self, profile: Tensor | Iterable[Tensor]) -> Dict[str, Tensor]:
+        if not isinstance(profile, (list, tuple)):
+            profile = [profile]
+        profile = torch.stack(profile)
+        return {'profile': profile}
+
+
+    def forward_features(self, profile: Tensor) -> Tensor:
+
+        profile = profile.permute(0, 2, 1)
+        out = self.conv1(profile)
+        out = self.bn1(out)
+        out = self.relu(out)
+        out = self.maxpool(out)
+
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.layer4(out)
+
+        return out
+
+
+    def forward(self, profile: Tensor, **kwargs) -> Tensor:
+
+        out = self.forward_features(profile)
+        out = self.avgpool(out)
+        out = torch.flatten(out, 1)
+
+        if self.metadata:
+            metadata = kwargs['profile_len'].to(profile.dtype)
+            metadata /= profile.shape[1]
+            out = torch.cat((out, metadata), 1)
+
+        return self.drop(out)
+

@@ -10,11 +10,11 @@ class ImageEncoder(Module):
 
     def __init__(self, name: str, num_classes: int = 0,
                  pretrained: bool = False, dropout: float = 0.1,
-                 metadata: bool = True) -> None:
+                 in_chans: int = 1, metadata: bool = True) -> None:
         super().__init__()
 
         self.backbone = timm.create_model(name, num_classes=num_classes, 
-                                          pretrained=True)
+                                          pretrained=True, in_chans=in_chans)
         self.dim_out = self.backbone.num_features + 2 * metadata
         self.metadata = metadata
         self.drop = nn.Dropout(dropout)

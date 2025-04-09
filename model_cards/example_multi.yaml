@@ -1,8 +1,8 @@
-dataset: 'small'
+precision: 'medium'
 dim_embedding: 512
 max_len: &max_len 256
-bs: 32
-patience: 8
+bs: 64
+patience: 20
 save_top_k: 5
 
 image_encoder_args:

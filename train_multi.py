@@ -17,6 +17,7 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import EarlyStopping
 
 parser = argparse.ArgumentParser()
+parser.add_argument("-d", "--dataset", help="Location to dataset tables.")
 parser.add_argument("-m", "--modelcard", help="Path to model card (yaml file).")
 args = parser.parse_args()
 
@@ -29,7 +30,7 @@ dataset = card_dict['dataset']
 max_len = card_dict['max_len']
 bs = card_dict['bs']
 
-data_path = Path('./data/CytoSense')
+data_path = Path(f'{args.dataset}')
 
 image_transforms = ImageTransforms()
 signal_transforms = ProfileTransform(max_len=max_len)
@@ -73,14 +74,14 @@ def multi_collate(batch, model=model):
     return image | profile | label | image_shape | profile_len
 
 train_loader = DataLoader(dataset=train_set, batch_size=bs, 
-                        shuffle=True, num_workers=8, 
+                        shuffle=True, num_workers=4, 
                         drop_last=True, collate_fn=multi_collate)
 
-test_loader = DataLoader(dataset=test_set, batch_size=bs, 
-                         num_workers=8, collate_fn=multi_collate)
+test_loader = DataLoader(dataset=test_set, batch_size=16, 
+                         num_workers=4, collate_fn=multi_collate)
 
-valid_loader = DataLoader(dataset=valid_set, batch_size=bs, 
-                         num_workers=8, drop_last=True, 
+valid_loader = DataLoader(dataset=valid_set, batch_size=32, 
+                         num_workers=4, drop_last=True, 
                          collate_fn=multi_collate)
 
 name = card.name.split('.')[0]

@@ -1,6 +1,5 @@
 precision: 'medium'
-dataset: 'split'
-bs: 128
+bs: 64
 patience: 20
 save_top_k: 5
 
@@ -19,7 +18,7 @@ optim_args:
 trainer_args:
   precision: '16-mixed'
   min_epochs: 40
-  max_epochs: 100
+  max_epochs: 300
   accumulate_grad_batches: 1
   val_check_interval:
   check_val_every_n_epoch: 1
