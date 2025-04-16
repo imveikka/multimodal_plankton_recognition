@@ -68,15 +68,16 @@ class ProfileTransformer(Module):
         return self.drop(x)
 
 
-
 class ProfileLSTM(Module):
 
 
     def __init__(self, dim_in: int, dim_hidden: int, num_layers: int,
-                 dropout: float = 0.1, metadata: bool = True) -> None:
+                 dropout: float = 0.1, metadata: bool = True,
+                 max_len: int = 256) -> None:
         super().__init__()
 
-        self.lstm = nn.LSTM(dim_in, dim_hidden, num_layers,
+        self.expand = nn.Linear(dim_in, dim_hidden, bias=False)
+        self.lstm = nn.LSTM(dim_hidden, dim_hidden, num_layers,
                             batch_first=True, dropout=dropout)
         self.drop = nn.Dropout(dropout)
         self.dim_out = dim_hidden + metadata
@@ -97,7 +98,8 @@ class ProfileLSTM(Module):
     def forward(self, profile: Tensor, last_idx: Tensor,
                 **kwargs) -> Tensor:
 
-        x, _ = self.lstm(profile)
+        x = self.expand(profile)
+        x, _ = self.lstm(x)
         x = x[torch.arange(x.shape[0]), last_idx]
         if self.metadata:
             metadata = kwargs['profile_len'].to(profile.dtype)
@@ -155,8 +157,8 @@ class ProfileCNN(Module):
 
     def __init__(self, dim_in, blocks: list[int], groups: int = 1,
                  block_type: type[_BasicBlock] = _BasicBlock,
-                 base_channels: int = 32,
-                 dropout = 0.1, metadata: bool = True) -> None:
+                 base_channels: int = 32, dropout = 0.1,
+                 metadata: bool = True, max_len: int = 256) -> None:
 
         super().__init__()
         self.in_channels = self.base_channels = base_channels

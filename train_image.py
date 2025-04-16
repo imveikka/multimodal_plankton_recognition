@@ -69,17 +69,17 @@ def multi_collate(batch, model=model):
     return image| label | image_shape
 
 train_loader = DataLoader(dataset=train_set, batch_size=bs, 
-                        shuffle=True, num_workers=4, 
+                        shuffle=True, num_workers=8, 
                         drop_last=True, collate_fn=multi_collate)
 
-test_loader = DataLoader(dataset=test_set, batch_size=16,
-                         num_workers=4, collate_fn=multi_collate)
+test_loader = DataLoader(dataset=test_set, batch_size=64,
+                         num_workers=8, collate_fn=multi_collate)
 
 valid_loader = DataLoader(dataset=valid_set, batch_size=32, 
-                         num_workers=4, drop_last=True, 
+                         num_workers=8, drop_last=True, 
                          collate_fn=multi_collate)
 
-name = card.name.split('.')[0]
+name = card.name.split('.')[0] + '_' + '_'.join(str(data_path).split('/')[-2:])
 logger = TensorBoardLogger(save_dir="logs/", name=name)
 
 checkpoint = ModelCheckpoint(

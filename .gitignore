@@ -1,6 +1,7 @@
 # tensorboard
 runs
 logs
+lightning_logs
 
 # model cards
 *.yaml

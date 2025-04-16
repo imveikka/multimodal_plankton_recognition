@@ -92,19 +92,16 @@ class PairAugmentation(object):
 
 
     def __init__(self):
-        self.resize = v2.Resize((240, 240))
+        self.resize = v2.Resize((224, 224))
         self.affine = v2.RandomAffine(degrees=(-2, 2),
                                       translate=(.02, .02),
                                       scale=(.98, 1.02))
-        self.crop = v2.RandomCrop((224, 224))
         self.jitter = v2.ColorJitter(0.1, 0.1)
 
 
     def __call__(self, image: torch.Tensor, profile: torch.Tensor) -> tuple[torch.Tensor]:
 
         image = self.resize(image)
-        image = self.affine(image)
-        image = self.crop(image)
         image += (1e-3 * torch.randn(image.shape[1:]))
         profile += (1e-3 * torch.randn(profile.shape))
         image = self.jitter(image)
@@ -113,6 +110,7 @@ class PairAugmentation(object):
         if random.randint(0, 1) == 0:
             image = v2.functional.horizontal_flip(image)
             profile = profile.flip(0)
+        image = self.affine(image)
 
         return image, profile
 

@@ -13,6 +13,7 @@ from torchmetrics.classification import MulticlassConfusionMatrix
 import matplotlib.pyplot as plt
 import io
 from PIL import Image
+import pacmap
 
 
 
@@ -21,7 +22,6 @@ class MultiModel(LightningModule):
 
     def __init__(self, dim_embed, image_encoder_args: Dict[str, Any], 
                  profile_encoder_args: Dict[str, Any],
-                 classifier_args: Dict[str, Any],
                  coordination_args: Dict[str, Any],
                  optim_args: Dict[str, Any],
                  class_names: Iterable[str]) -> None:
@@ -35,37 +35,38 @@ class MultiModel(LightningModule):
         
         if 'num_head' in profile_encoder_args:
             self.profile_encoder = ProfileTransformer(**profile_encoder_args)
+        elif 'blocks' in profile_encoder_args:
+            self.profile_encoder = ProfileCNN(**profile_encoder_args)
         else:
             self.profile_encoder = ProfileLSTM(**profile_encoder_args)
         self.profile_projection = nn.Linear(self.profile_encoder.dim_out,
                                             dim_embed, bias=False)
 
-        # Construct classifier
-        hidden = tuple(classifier_args['dim_hidden_layers'])
-        layers = (dim_embed,) + hidden + (len(class_names),)
-        self.classifier_layers = nn.ModuleList([
-            nn.Linear(dim_in, dim_out) for dim_in, dim_out in pairwise(layers)
-        ])
-        self.classifier_drop = nn.Dropout(p=classifier_args['dropout'])
-        self.classifier_act = getattr(F, classifier_args['activation'])
-
-        # Losses
+        # Loss
         method = coordination_args.get('method')
         if method == 'clip':
-            self.coor_loss = CLIPLoss()
+            self.loss = CLIPLoss()
         elif method == 'rank':
-            self.coor_loss = RankLoss(margin=coordination_args['margin'])
-        elif method == 'distance':
-            self.coor_loss = DistanceLoss()
+            self.loss = RankLoss(margin=coordination_args['margin'])
+        elif method == 'arc' and coordination_args['supervised']:
+            self.loss = ArcFace(dim_embed, len(class_names),
+                                s=coordination_args.get('s', 30.0),
+                                m=coordination_args.get('m', 0.50),
+                                easy_margin=coordination_args.get('easy_margin', False))
+        elif method == 'siglip':
+            self.loss = SigLIPLoss()
         else:
-            self.coor_loss = Zero()
-        self.clas_loss = nn.CrossEntropyLoss()
+            raise Exception("Coordination loss not found.")
 
         # Miscellaneous
         self.label_encoder = LabelEncoder().fit(class_names)
-        self.alpha = coordination_args['alpha']
         self.supervised_coordination = coordination_args['supervised']
         self.optim_args = optim_args
+
+        self.train_loss = []
+        self.valid_loss = []
+        self.test_embs = []
+        self.test_label = []
 
 
     def name_to_id(self, label: str | Iterable[str]) -> Tensor:
@@ -90,9 +91,10 @@ class MultiModel(LightningModule):
 
 
     def encode(self, image: Tensor | None, profile: Tensor | None, 
-               **kwargs) -> Dict[str, Tensor]:
+               **kwargs) -> Dict[str, Tensor | None]:
 
-        image_emb = self.safe_forward(self.image_encoder, image=image)
+        image_emb = self.safe_forward(self.image_encoder, image=image,
+                                      **kwargs)
         profile_emb = self.safe_forward(self.profile_encoder, profile=profile,
                                         **kwargs)
 
@@ -103,84 +105,100 @@ class MultiModel(LightningModule):
 
         return {'image_emb': image_emb, 'profile_emb': profile_emb}
     
-
-    def classify_(self, x: Tensor | None):
-
-        for layer in self.classifier_layers[:-1]:
-            x = self.classifier_drop(x)
-            x = layer(x)
-            x = self.classifier_act(x)
-    
-        return self.classifier_layers[-1](x)
-
-
-    def classify(self, image_emb: Tensor | None, profile_emb: Tensor | None,
-                 **kwargs) -> Dict[str, Tensor]:
         
-        logits_1 = self.safe_forward(self.classify_, x=image_emb)
-        logits_2 = self.safe_forward(self.classify_, x=profile_emb)
-
-        if logits_1 is None: logits_1 = 0
-        if logits_2 is None: logits_2 = 0
-
-        return logits_1 + logits_2
-    
-    
-    def forward(self, **kwargs) -> Dict[str, Tensor]:
-        
+    def forward(self, **kwargs) -> Dict[str, Tensor | None]:
         embeddings = self.encode(**kwargs)
-        logits = self.classify(**embeddings)
-
-        return logits
+        return embeddings
 
 
     def training_step(self, batch: Dict[str, Tensor], batch_idx: int) -> Tensor:
 
         embeddings = self.encode(**batch)
-        embeddings_stacked = torch.cat(list(embeddings.values()))
-        label_stacked = torch.tile(batch['label'], (2,))
-        logits = self.classify_(embeddings_stacked)
 
-        loss_coor = self.coor_loss(
+        loss = self.loss(
             **embeddings, 
             label=batch['label'] if self.supervised_coordination else None
         )
-        loss_clas = self.clas_loss(logits, label_stacked)
-        loss = self.alpha * loss_coor + (1 - self.alpha) * loss_clas
-
-        metrics = {
-            'train_loss_total': loss,
-            'train_loss_coord': loss_coor,
-            'train_loss_class': loss_clas,
-        }
-        self.log_dict(metrics)
+        self.train_loss.append(loss.detach())
 
         return loss
+
+
+    def on_train_epoch_end(self) -> None:
+
+        loss = torch.stack(self.train_loss)
+        loss = loss.mean()
+
+        metrics = {'train_loss': loss, 'step': self.current_epoch}
+        self.log_dict(metrics)
+
+        self.train_loss.clear()
 
     
     def validation_step(self, batch: Dict[str, Tensor],
                         batch_idx: int) -> Tensor:
 
         embeddings = self.encode(**batch)
-        embeddings_stacked = torch.cat(list(embeddings.values()))
-        label_stacked = torch.tile(batch['label'], (2,))
-        logits = self.classify_(embeddings_stacked)
 
-        loss_coor = self.coor_loss(
+        loss = self.loss(
             **embeddings, 
             label=batch['label'] if self.supervised_coordination else None
         )
-        loss_clas = self.clas_loss(logits, label_stacked)
-        loss = self.alpha * loss_coor + (1 - self.alpha) * loss_clas
+        self.valid_loss.append(loss.detach())
 
-        metrics = {
-            'valid_loss_total': loss,
-            'valid_loss_coord': loss_coor,
-            'valid_loss_class': loss_clas,
-        }
-        self.log_dict(metrics, on_epoch=True)
 
+    def on_validation_epoch_end(self) -> None:
+
+        loss = torch.stack(self.valid_loss)
+        loss = loss.mean()
+        
+        metrics = {'valid_loss': loss, 'step': self.current_epoch}
+        self.log_dict(metrics)
+
+        self.valid_loss.clear()
        
+
+    def test_step(self, batch: Dict[str, Tensor], batch_idx: int) -> None:
+
+        embeddings = self.encode(**batch)
+        label = batch['label']
+        
+        embeddings = torch.cat(list(embeddings.values()))
+        label = torch.tile(batch['label'], (2,))
+
+        self.test_embs.append(embeddings)
+        self.test_label.append(label)
+
+
+    def on_test_epoch_end(self) -> None:
+
+        embeddings = torch.concat(self.test_embs).to('cpu')
+        embeddings /= embeddings.norm(dim=1, keepdim=True)
+        label = torch.concat(self.test_label).to('cpu').numpy()
+
+        mapping = pacmap.PaCMAP(n_components=2, n_neighbors=3, MN_ratio=.5) 
+        reduced = mapping.fit_transform(embeddings.numpy())
+        
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.scatter(*reduced.T, c=label, cmap='jet', s=2, marker='.')
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", bbox_inches="tight")
+        buf.seek(0)
+        img = pil_to_tensor(Image.open(buf))
+        
+        self.logger.experiment.add_image('test_cm', img, global_step=0)
+
+
+    def predict_step(self, batch: Dict[str, Tensor], batch_idx: int,
+                     dataloader_idx: int = 0) -> Any:
+
+        embeddings = self.encode(**batch)
+        label = batch['label']
+        
+        return embeddings | {'label': label}
+
+
     def configure_optimizers(self):
         return optim.SGD(self.parameters(), **self.optim_args)
 
@@ -318,6 +336,14 @@ class ImageModel(LightningModule):
         img = pil_to_tensor(Image.open(buf))
 
         self.logger.experiment.add_image('test_cm', img, global_step=0)
+
+        self.test_pred.clear()
+        self.test_true.clear()
+
+
+    def predict_step(self, batch: Dict[str, Tensor], batch_idx: int,
+                     dataloader_idx: int = 0) -> Any:
+        return self(**batch)['logits'], batch['label']
 
 
     def configure_optimizers(self):
@@ -466,6 +492,14 @@ class ProfileModel(LightningModule):
         img = pil_to_tensor(Image.open(buf))
 
         self.logger.experiment.add_image('test_cm', img, global_step=0)
+
+        self.test_pred.clear()
+        self.test_true.clear()
+
+
+    def predict_step(self, batch: Dict[str, Tensor], batch_idx: int,
+                     dataloader_idx: int = 0) -> Any:
+        return self(**batch)['logits'], batch['label']
 
        
     def configure_optimizers(self):
