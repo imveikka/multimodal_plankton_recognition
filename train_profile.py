@@ -48,11 +48,6 @@ test_set = MultiSet(annotation_path=data_path / f'test.csv',
                     profile_transform=signal_transforms,
                     pair_augmentation=None)
 
-valid_set = MultiSet(annotation_path=data_path / f'valid.csv', 
-                    image_transforms=image_transforms,
-                    profile_transform=signal_transforms,
-                    pair_augmentation=None)
-
 model = ProfileModel(
     profile_encoder_args=card_dict['profile_encoder_args'],
     optim_args=card_dict['optim_args'],
@@ -70,24 +65,20 @@ def multi_collate(batch, model=model):
     return profile | label | profile_len
 
 train_loader = DataLoader(dataset=train_set, batch_size=bs, 
-                        shuffle=True, num_workers=8, 
+                        shuffle=True, num_workers=4, 
                         drop_last=True, collate_fn=multi_collate)
 
-valid_loader = DataLoader(dataset=valid_set, batch_size=32, 
-                          shuffle=True, num_workers=8,
-                          drop_last=True, collate_fn=multi_collate)
-
-test_loader = DataLoader(dataset=test_set, batch_size=16, 
-                         num_workers=8, collate_fn=multi_collate)
+test_loader = DataLoader(dataset=test_set, batch_size=bs, 
+                         num_workers=4, collate_fn=multi_collate)
 
 name = card.name.split('.')[0] + '_' + '_'.join(str(data_path).split('/')[-2:])
 logger = TensorBoardLogger(save_dir="logs/", name=name)
 
 checkpoint = ModelCheckpoint(
-        filename="{epoch}_{valid_loss:.2f}",
-        monitor="valid_loss",
+        filename="{epoch}_{valid_acc:.4f}",
+        monitor="valid_acc",
         save_top_k=card_dict.get('save_top_k', 1),
-        mode="min"
+        mode="max"
 )
 stopper = EarlyStopping(monitor='valid_loss', min_delta=0.0,
                         patience=card_dict['patience'],
@@ -100,5 +91,5 @@ trainer = Trainer(
     **card_dict['trainer_args']
 )
 
-trainer.fit(model, train_loader, valid_loader)
+trainer.fit(model, train_loader, test_loader)
 trainer.test(model, test_loader, ckpt_path='best')

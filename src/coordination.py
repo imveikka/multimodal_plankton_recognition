@@ -29,7 +29,7 @@ class CLIPLoss(Module):
 
         image_emb = image_emb / image_emb.norm(dim=1, keepdim=True)
         profile_emb = profile_emb / profile_emb.norm(dim=1, keepdim=True)       
-        logits = (image_emb @ profile_emb.T) / self.logit_scale.exp()
+        logits = (image_emb @ profile_emb.T) * self.logit_scale.exp()
         
 
         if label is not None:

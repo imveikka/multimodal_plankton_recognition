@@ -73,7 +73,7 @@ if __name__ == "__main__":
             continue
 
         annot = annotations[annotations.class_name == name]
-        train_annot, test_annot = train_test_split(annot, train_size=.5)
+        train_annot, test_annot = train_test_split(annot, train_size=.8)
 
         if len(train_annot) < args.trainsize:
             temp = train_annot.sample(n=args.trainsize-len(train_annot))

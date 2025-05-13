@@ -82,6 +82,7 @@ class ProfileLSTM(Module):
         self.drop = nn.Dropout(dropout)
         self.dim_out = dim_hidden + metadata
         self.metadata = metadata
+        self.max_len = max_len
 
 
     def tokenize(self, profile: Tensor | Iterable[Tensor]) -> Dict[str, Tensor]:

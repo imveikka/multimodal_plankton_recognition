@@ -51,11 +51,6 @@ test_set = MultiSet(annotation_path=data_path / f'test.csv',
                     profile_transform=signal_transforms,
                     pair_augmentation=None)
 
-valid_set = MultiSet(annotation_path=data_path / f'valid.csv', 
-                    image_transforms=image_transforms,
-                    profile_transform=signal_transforms,
-                    pair_augmentation=None)
-
 model = MultiModel(
     dim_embed=card_dict['dim_embedding'],
     image_encoder_args=card_dict['image_encoder_args'],
@@ -81,11 +76,11 @@ train_loader = DataLoader(dataset=train_set, batch_size=bs,
                         shuffle=True, num_workers=8, 
                         drop_last=True, collate_fn=multi_collate)
 
-valid_loader = DataLoader(dataset=valid_set, batch_size=bs, 
+valid_loader = DataLoader(dataset=test_set, batch_size=bs, 
                          shuffle=True, num_workers=8,
                          drop_last=True, collate_fn=multi_collate)
 
-test_loader = DataLoader(dataset=test_set, batch_size=128, 
+test_loader = DataLoader(dataset=test_set, batch_size=bs, 
                          num_workers=8, collate_fn=multi_collate)
 
 name = card.name.split('.')[0] + '_' + '_'.join(str(data_path).split('/')[-2:])

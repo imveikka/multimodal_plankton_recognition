@@ -6,9 +6,13 @@ from pathlib import Path
 import argparse
 import sys
 import numpy as np
-from sklearn.metrics import top_k_accuracy_score
+from sklearn.metrics import (
+    accuracy_score, precision_recall_fscore_support,
+    classification_report, confusion_matrix, ConfusionMatrixDisplay,
+)
 import logging
 from itertools import chain
+import matplotlib.pyplot as plt
 
 sys.path.append('./src')
 from src.data import MultiSet, ImageTransforms, ProfileTransform
@@ -17,6 +21,16 @@ from src.model import ImageModel
 from lightning import Trainer
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+
+import scienceplots
+
+plt.style.use('science')
+
+plt.rcParams.update({
+    "font.family": "serif",
+    "font.serif": ["Times"],
+    "font.size": 12
+})
 
 # configure logging at the root level of Lightning
 logging.getLogger("lightning.pytorch").setLevel(logging.ERROR)
@@ -31,6 +45,8 @@ models = filter(lambda x: x.name.startswith(args.model), log_path.iterdir())
 checkpoints = chain(*((m / 'version_0/checkpoints').iterdir() for m in models))
 
 scores = []
+true_all = []
+pred_all = []
 
 for checkpoint in checkpoints:
 
@@ -62,16 +78,39 @@ for checkpoint in checkpoints:
     trainer = Trainer(barebones=True)
 
     logits, label = zip(*trainer.predict(model, test_loader))
-    logits = torch.cat(logits).numpy()
-    label = torch.cat(label).numpy()
+    pred = torch.cat(logits).numpy().argmax(1)
+    true = torch.cat(label).numpy()
+    
+    acc = accuracy_score(true, pred)
+    metrics = precision_recall_fscore_support(true, pred, average='macro')
+    
+    scores.append((acc,) + metrics[:-1])
+    true_all.append(true)
+    pred_all.append(pred)
 
-    top1 = top_k_accuracy_score(label, logits, k=1)
-    top5 = top_k_accuracy_score(label, logits, k=5)
+m1, m2, m3, m4 = np.mean(scores, 0)
+s1, s2, s3, s4 = np.std(scores, 0)
 
-    scores.append((top1, top5))
-
-m1, m5 = np.mean(scores, 0)
-s1, s5 = np.std(scores, 0)
+true_all = np.concatenate(true_all)
+pred_all = np.concatenate(pred_all)
 
 name = args.model
-print(f'{name:50} & {m1:.5f}+-{s1:.5f} & {m5:.5f}+-{s5:.5f}')
+print(f'{name:50} & {m1:.2%}+-{s1:.2%} & {m2:.2%}+-{s2:.2%} & {m3:.2%}+-{s3:.2%} & {m4:.2%}+-{s4:.2%} \\')
+print()
+print(classification_report(true_all, pred_all, target_names=model.label_encoder.classes_, digits=4))
+print()
+
+disp = ConfusionMatrixDisplay.from_predictions(
+    true_all, pred_all, display_labels=model.label_encoder.classes_,
+)
+
+fig, ax = plt.subplots(figsize=(10,10))
+
+# Deactivate default colorbar
+disp.plot(ax=ax, colorbar=False, xticks_rotation="vertical")
+
+# Adding custom colorbar
+cax = fig.add_axes([ax.get_position().x1+0.01,ax.get_position().y0,0.02,ax.get_position().height])
+plt.colorbar(disp.im_,  cax=cax)
+
+plt.savefig(f'./figures/{name}_cm.pdf')
