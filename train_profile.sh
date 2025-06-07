@@ -2,7 +2,7 @@
 
 PREFIX=./data/FASTVISION-plus/fold
 
-for id in {2..5}
+for id in {1..5}
 do 
 
   python3 train_profile.py --dataset ${PREFIX}${id} --modelcard ./model_cards/profile/cnn_1.yaml
