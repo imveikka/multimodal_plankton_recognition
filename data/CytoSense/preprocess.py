@@ -3,11 +3,11 @@
 
 Author: Veikka Immonen
 
-Given the raw annotation table (Pulse-shapes_annotated_CS_images.csv) and 
-compressed image folders (or depending how you got the data, this is what I got)
-of each plankton specie, this script preprocess the data into a form that can 
-be handled more easier for model training and possible train/test splitting. 
-Running this script following directories and files:
+Given the raw annotation tables and image folders (depends how you got 
+the data, this is what I got) of each plankton specie, this script preprocess 
+the data into a form that can be handled more easier for model training and 
+possible train/test splitting. Running this script following directories 
+and files:
 
 *   ./images/: contains of all images where nested directory structures are
     flattened. Each image is renamed by it's respective label (X) from the
@@ -19,9 +19,7 @@ Running this script following directories and files:
     name, and information of available modalities is tabulated. Used to
     generate train, validation and test splits.
 
-Download the data to zips/ directory. Samples of each class is stored in a
-separate zip file. Leave them as they are. Once you have all the data 
-downloaded, the preprocessing can be done by
+Once you have all the raw data downloaded, the preprocessing can be done by
 
     $ python preprocess.py
 
@@ -32,7 +30,9 @@ directories must be removed before:
 """
 
 from pathlib import Path
+import glob
 import pandas as pd
+import polars as pl
 import shutil
 from multiprocessing import Pool
 
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     img_path = root / 'images'          # image data
     mod_path = root / 'profiles'        # optical profiles
     annot_path = root / 'annotations.csv'
-    orig_path = root / 'CS_ImageExp'
+    orig_path = root / 'Annotated_CS_images'
 
     assert not any(map(lambda x: x.exists(), [img_path, mod_path, annot_path])), \
     """
@@ -50,12 +50,33 @@ if __name__ == '__main__':
     ./annotations.csv to proceed.
     """
     
-    img_path.mkdir()
-    mod_path.mkdir()
+    # img_path.mkdir()
+    # mod_path.mkdir()
     
     table = pd.read_csv(orig_path / 'Pulse-shapes_annotated_CS_images.csv', low_memory=False)
     annotations = pd.DataFrame({'ID': [], 'class_name': []})
 
+    pattern = str(orig_path / '**' / '*.jpg')
+    image_files = glob.glob(pattern, recursive=True)
+    image_samples = [Path(file).name.split('_Cropped')[0] for file in image_files]
+
+    data_dir = Path('./data/')
+    
+    scan = (
+        pl.scan_csv(root / 'PDexp_Micro_phyto_pulse-shapes.txt', separator=' ')
+        .head(1000000)
+        .filter(pl.col('ID') != 0, pl.col('Sample').is_in(image_samples))
+        .group_by('ID', maintain_order=True)
+        .agg([pl.col('FWS'), pl.col('SWS'), pl.col('FL.Green'), pl.col('FL.Yellow'),
+              pl.col('FL.Orange'), pl.col('FL.Red'),
+              pl.col('Sample').first(), pl.col('cluster').first()])
+    )
+    
+    df = scan.collect()
+
+    print(df.shape)
+
+    print(df['ID'].unique_counts())
     # def process(id, file_id, table=table):
     #     samples = table[table.file_id == file_id]
     #     file_id = samples.file_id.iloc[0]
