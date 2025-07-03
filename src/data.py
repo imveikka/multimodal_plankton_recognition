@@ -13,6 +13,7 @@ from scipy.stats import mode
 import pandas as pd
 from pathlib import Path
 from typing import Iterable, Dict
+from PIL import Image
 
 
 class MultiSet(Dataset):
@@ -63,7 +64,7 @@ class MultiSet(Dataset):
                 'profile_length': profile_length}
 
 
-class ImageTransforms(object):
+class ImageTransforms:
 
     def __call__(self, image: np.ndarray) -> torch.Tensor:
         bg, std = find_background_stats(image)
@@ -74,7 +75,7 @@ class ImageTransforms(object):
         return image
 
 
-class ProfileTransform(object):
+class ProfileTransform:
 
 
     def __init__(self, max_len: int = None):
@@ -88,7 +89,20 @@ class ProfileTransform(object):
         return profile
 
 
-class PairAugmentation(object):
+class FixedHeightResize:
+
+
+    def __init__(self, size):
+        self.size = size
+        
+    def __call__(self, img):
+        w, h = img.size
+        aspect_ratio = float(h) / float(w)
+        new_w = math.ceil(self.size / aspect_ratio)
+        return F.resize(img, (self.size, new_w))
+
+
+class PairAugmentation:
 
 
     def __init__(self):
@@ -175,12 +189,57 @@ def pad_image_to_square(image: np.ndarray, bg: np.ndarray,
     return output_img
 
 
+def resize_pil(img: Image, target_res: int = 224,
+           resize: bool = True, edge: bool = False) -> Image:
+
+    original_width, original_height = img.size
+    original_channels = len(img.getbands())
+    if not edge:
+        canvas = np.zeros([target_res, target_res, 3], dtype=np.uint8)
+        if original_channels == 1:
+            canvas = np.zeros([target_res, target_res], dtype=np.uint8)
+        if original_height <= original_width:
+            if resize:
+                img = img.resize((target_res, int(np.around(target_res * original_height / original_width))), Image.Resampling.LANCZOS)
+            width, height = img.size
+            img = np.asarray(img)
+            canvas[(width - height) // 2: (width + height) // 2] = img
+        else:
+            if resize:
+                img = img.resize((int(np.around(target_res * original_width / original_height)), target_res), Image.Resampling.LANCZOS)
+            width, height = img.size
+            img = np.asarray(img)
+            canvas[:, (height - width) // 2: (height + width) // 2] = img
+    else:
+        if original_height <= original_width:
+            if resize:
+                img = img.resize((target_res, int(np.around(target_res * original_height / original_width))), Image.Resampling.LANCZOS)
+            width, height = img.size
+            img = np.asarray(img)
+            top_pad = (target_res - height) // 2
+            bottom_pad = target_res - height - top_pad
+            img = np.pad(img, pad_width=[(top_pad, bottom_pad), (0, 0), (0, 0)], mode='edge')
+        else:
+            if resize:
+                img = img.resize((int(np.around(target_res * original_width / original_height)), target_res), Image.Resampling.LANCZOS)
+            width, height = img.size
+            img = np.asarray(img)
+            left_pad = (target_res - width) // 2
+            right_pad = target_res - width - left_pad
+            img = np.pad(img, pad_width=[(0, 0), (left_pad, right_pad), (0, 0)], mode='edge')
+        canvas = img
+    return Image.fromarray(canvas)
+
+
 def constrait_len(profile: Tensor, max_len: int = 512) -> Tensor:
     l, d = profile.shape
     return v2.functional.resize(profile.unsqueeze(0), (max_len, d)).squeeze(0) \
         if l > max_len else profile
 
 
-def resize_profile(profile: Tensor, max_len: int = 512) -> Tensor:
+def resize_profile(profile: Tensor, target_len: int = 256) -> Tensor:
     _, d = profile.shape
-    return v2.functional.resize(profile.unsqueeze(0), (max_len, d)).squeeze(0)
+    profile = profile.unsqueeze(0)
+    profile = v2.functional.resize(profile, (target_len, d))
+    return profile.squeeze(0)
+
