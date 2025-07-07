@@ -6,7 +6,7 @@ import argparse
 import sys
 import json
 
-sys.path.append('./src')
+sys.path.append('../')
 from src.data import MultiSet, ImageTransforms, ProfileTransform, PairAugmentation
 from src.profile_encoder import ProfileTransformer
 from src.image_encoder import ImageEncoder
@@ -57,20 +57,18 @@ model = MultiModel(
     profile_encoder_args=card_dict['profile_encoder_args'],
     coordination_args=card_dict['coordination_args'],
     optim_args=card_dict['optim_args'],
-    class_names=train_set.class_names,
 )
 
 def multi_collate(batch, model=model):
 
-    image, profile, label, image_shape, profile_len = zip(*(sample.values() for sample in batch))
+    image, profile, _, image_shape, profile_len = zip(*(sample.values() for sample in batch))
 
     image = {'image': torch.stack(image)}
     profile = model.profile_encoder.tokenize(profile)
-    label = {'label': model.name_to_id(label)}
     image_shape = {'image_shape': torch.stack(image_shape)}
     profile_len = {'profile_len': torch.stack(profile_len)}
 
-    return image | profile | label | image_shape | profile_len
+    return image | profile | image_shape | profile_len
 
 train_loader = DataLoader(dataset=train_set, batch_size=bs, 
                         shuffle=True, num_workers=8, 
@@ -84,7 +82,7 @@ test_loader = DataLoader(dataset=test_set, batch_size=bs,
                          num_workers=8, collate_fn=multi_collate)
 
 name = card.name.split('.')[0] + '_' + '_'.join(str(data_path).split('/')[-2:])
-logger = TensorBoardLogger(save_dir="logs/", name=name)
+logger = TensorBoardLogger(save_dir="../logs/", name=name)
 
 checkpoint = ModelCheckpoint(
         filename="{epoch}_{valid_loss:.5f}",
@@ -104,5 +102,4 @@ trainer = Trainer(
 )
 
 trainer.fit(model, train_loader, valid_loader)
-trainer.test(model, test_loader, ckpt_path='best')
 

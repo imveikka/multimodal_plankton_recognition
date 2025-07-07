@@ -2,9 +2,9 @@ import torch
 from torch import nn, Tensor, optim
 from torchvision.transforms.v2.functional import pil_to_tensor
 from typing import Dict, Any, Iterable, Callable
-from image_encoder import ImageEncoder
-from profile_encoder import ProfileCNN, ProfileTransformer, ProfileLSTM
-from coordination import *
+from .image_encoder import ImageEncoder
+from .profile_encoder import ProfileCNN, ProfileTransformer, ProfileLSTM
+from .coordination import *
 from lightning import LightningModule
 from sklearn.preprocessing import LabelEncoder
 from itertools import pairwise
@@ -23,8 +23,7 @@ class MultiModel(LightningModule):
     def __init__(self, dim_embed, image_encoder_args: Dict[str, Any], 
                  profile_encoder_args: Dict[str, Any],
                  coordination_args: Dict[str, Any],
-                 optim_args: Dict[str, Any],
-                 class_names: Iterable[str]) -> None:
+                 optim_args: Dict[str, Any]) -> None:
         super().__init__()
         self.save_hyperparameters()
 
@@ -48,40 +47,17 @@ class MultiModel(LightningModule):
             self.loss = CLIPLoss()
         elif method == 'rank':
             self.loss = RankLoss(margin=coordination_args['margin'])
-        elif method == 'arc' and coordination_args['supervised']:
-            self.loss = ArcFace(dim_embed, len(class_names),
-                                s=coordination_args.get('s', 30.0),
-                                m=coordination_args.get('m', 0.50),
-                                easy_margin=coordination_args.get('easy_margin', False))
         elif method == 'siglip':
             self.loss = SigLIPLoss()
         else:
             raise Exception("Coordination loss not found.")
 
         # Miscellaneous
-        self.label_encoder = LabelEncoder().fit(class_names)
-        self.supervised_coordination = coordination_args['supervised']
         self.optim_args = optim_args
-
         self.train_loss = []
         self.valid_loss = []
-        self.test_embs = []
-        self.test_label = []
 
 
-    def name_to_id(self, label: str | Iterable[str]) -> Tensor:
-        if isinstance(label, str):
-            label = [label]
-        label = self.label_encoder.transform(label)
-        return torch.tensor(label).long()
-    
-
-    def id_to_name(self, label: Tensor) -> Iterable:
-        label = label.numpy()
-        label = self.label_encoder.inverse_transform(label)
-        return label
-
-    
     def safe_forward(self, model: Callable, **kwargs):
         return model(**kwargs) if None not in kwargs.values() else None 
  
@@ -115,10 +91,7 @@ class MultiModel(LightningModule):
 
         embeddings = self.encode(**batch)
 
-        loss = self.loss(
-            **embeddings, 
-            label=batch['label'] if self.supervised_coordination else None
-        )
+        loss = self.loss(**embeddings, label=None)
         self.train_loss.append(loss.detach())
 
         return loss
@@ -140,10 +113,7 @@ class MultiModel(LightningModule):
 
         embeddings = self.encode(**batch)
 
-        loss = self.loss(
-            **embeddings, 
-            label=batch['label'] if self.supervised_coordination else None
-        )
+        loss = self.loss(**embeddings, label=None)
         self.valid_loss.append(loss.detach())
 
 
@@ -158,45 +128,15 @@ class MultiModel(LightningModule):
         self.valid_loss.clear()
        
 
-    def test_step(self, batch: Dict[str, Tensor], batch_idx: int) -> None:
-
-        embeddings = self.encode(**batch)
-        label = batch['label']
-        
-        embeddings = torch.cat(list(embeddings.values()))
-        label = torch.tile(batch['label'], (2,))
-
-        self.test_embs.append(embeddings)
-        self.test_label.append(label)
-
-
-    def on_test_epoch_end(self) -> None:
-
-        embeddings = torch.concat(self.test_embs).to('cpu')
-        embeddings /= embeddings.norm(dim=1, keepdim=True)
-        label = torch.concat(self.test_label).to('cpu').numpy()
-
-        mapping = pacmap.PaCMAP(n_components=2, n_neighbors=3, MN_ratio=.5) 
-        reduced = mapping.fit_transform(embeddings.numpy())
-        
-        fig, ax = plt.subplots(figsize=(8, 8))
-        ax.scatter(*reduced.T, c=label, cmap='jet', s=2, marker='.')
-        
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png", bbox_inches="tight")
-        buf.seek(0)
-        img = pil_to_tensor(Image.open(buf))
-        
-        self.logger.experiment.add_image('test_cm', img, global_step=0)
-
-
     def predict_step(self, batch: Dict[str, Tensor], batch_idx: int,
                      dataloader_idx: int = 0) -> Any:
 
         embeddings = self.encode(**batch)
-        label = batch['label']
+        if 'label' in batch:
+            return embeddings | {'label': batch['label']}
+        else:
+            return embeddings
         
-        return embeddings | {'label': label}
 
 
     def configure_optimizers(self):

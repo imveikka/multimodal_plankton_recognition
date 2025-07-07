@@ -47,7 +47,7 @@ if __name__ == "__main__":
                             shuffle=True,
                             random_state=args.seed)
 
-    for k, (train, test) in enumerate(kfold.split(annot, annot.class_name), 1):
+    for k, (train, test) in enumerate(kfold.split(annot, annot['class']), 1):
 
         annot_dir = data_dir / f'{args.name}{k}'
         if not annot_dir.exists():

@@ -25,12 +25,7 @@ class MultiSet(Dataset):
 
         self.parent = annotation_path.parent
         self.table = pd.read_csv(annotation_path)
-
-        self.id = self.table.ID.to_numpy()
-        self.image_files = [self.parent / f'../images/{id}.jpg' for id in self.id]
-        self.profile_files = [self.parent / f'../profiles/{id}.csv' for id in self.id]
-        self.labels = self.table.class_name.to_numpy()
-        self.class_names = np.unique(self.labels)
+        self.class_names = np.unique(self.table['class'])
         
         self.image_transforms = image_transforms
         self.profile_transform = profile_transform
@@ -38,12 +33,12 @@ class MultiSet(Dataset):
 
 
     def __len__(self):
-        return len(self.id)
+        return len(self.table)
     
 
     def __getitem__(self, index: int) -> Dict[str, Tensor]:
-        image = cv2.imread(self.image_files[index], cv2.IMREAD_GRAYSCALE)
-        profile = np.loadtxt(self.profile_files[index], delimiter=',', skiprows=1)  
+        image = cv2.imread(self.parent / '..' / self.table.image[index], cv2.IMREAD_GRAYSCALE)
+        profile = np.loadtxt(self.parent / '..' / self.table.profile[index], delimiter=',', skiprows=1)  
         profile = torch.tensor(profile)
 
         image_shape = torch.tensor(image.shape)
@@ -51,7 +46,7 @@ class MultiSet(Dataset):
 
         image = self.image_transforms(image)
         profile = self.profile_transform(profile)
-        label = self.labels[index]
+        label = self.table['class'][index]
 
 
         if self.pair_augmentation:
@@ -85,7 +80,7 @@ class ProfileTransform:
     def __call__(self, profile: torch.Tensor) -> torch.Tensor:
         profile = profile.add(1).log().float()
         if self.max_len:
-            profile = resize_profile(profile, max_len=self.max_len)
+            profile = resize_profile(profile, target_len=self.max_len)
         return profile
 
 

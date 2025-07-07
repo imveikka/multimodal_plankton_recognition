@@ -6,7 +6,7 @@ import argparse
 import sys
 import json
 
-sys.path.append('./src')
+sys.path.append('./../src')
 from src.data import MultiSet, ImageTransforms, ProfileTransform, PairAugmentation
 from src.model import ImageModel
 
@@ -71,7 +71,7 @@ test_loader = DataLoader(dataset=test_set, batch_size=bs,
                          num_workers=4, collate_fn=multi_collate)
 
 name = card.name.split('.')[0] + '_' + '_'.join(str(data_path).split('/')[-2:])
-logger = TensorBoardLogger(save_dir="logs/", name=name)
+logger = TensorBoardLogger(save_dir="../logs/", name=name)
 
 checkpoint = ModelCheckpoint(
         filename="{epoch}_{valid_acc:.4f}",
