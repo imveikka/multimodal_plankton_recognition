@@ -13,7 +13,6 @@ from torchmetrics.classification import MulticlassConfusionMatrix
 import matplotlib.pyplot as plt
 import io
 from PIL import Image
-import pacmap
 
 
 
@@ -90,8 +89,9 @@ class MultiModel(LightningModule):
     def training_step(self, batch: Dict[str, Tensor], batch_idx: int) -> Tensor:
 
         embeddings = self.encode(**batch)
+        embeddings['buckets'] = batch['buckets']
 
-        loss = self.loss(**embeddings, label=None)
+        loss = self.loss(**embeddings)
         self.train_loss.append(loss.detach())
 
         return loss
@@ -112,8 +112,9 @@ class MultiModel(LightningModule):
                         batch_idx: int) -> Tensor:
 
         embeddings = self.encode(**batch)
+        embeddings['buckets'] = batch['buckets']
 
-        loss = self.loss(**embeddings, label=None)
+        loss = self.loss(**embeddings)
         self.valid_loss.append(loss.detach())
 
 

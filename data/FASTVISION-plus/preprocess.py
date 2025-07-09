@@ -40,7 +40,7 @@ if __name__ == '__main__':
         profs.append(str(prof_path))
         classes.append(name)
         
-        pl.DataFrame(
+        profile = pl.DataFrame(
             {
                'FSC': fws,
                'SSC': sws,
@@ -49,7 +49,12 @@ if __name__ == '__main__':
                'Orange': orange,
                'Red': red
             }
-        ).write_csv(root / prof_path)
+        )
+        (
+            profile
+            .filter(*(pl.col(c) > 0 for c in profile.columns))
+            .write_csv(root / prof_path)
+        )
 
     pl.DataFrame(
         {

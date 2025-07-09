@@ -159,7 +159,7 @@ class ProfileCNN(Module):
     def __init__(self, dim_in, blocks: list[int], groups: int = 1,
                  block_type: type[_BasicBlock] = _BasicBlock,
                  base_channels: int = 32, dropout = 0.1,
-                 metadata: bool = True, max_len: int = 256) -> None:
+                 metadata: bool = True) -> None:
 
         super().__init__()
         self.in_channels = self.base_channels = base_channels
@@ -214,7 +214,7 @@ class ProfileCNN(Module):
 
     def forward_features(self, profile: Tensor) -> Tensor:
 
-        profile = profile.permute(0, 2, 1)
+        profile = profile.transpose(1, 2)
         out = self.conv1(profile)
         out = self.bn1(out)
         out = self.relu(out)

@@ -1,23 +1,24 @@
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-d", "--dataset", help="Location to dataset tables.")
+parser.add_argument("-m", "--modelcard", help="Path to model card (yaml file).")
+args = parser.parse_args()
+
 import torch
 from torch.utils.data import DataLoader
 from pathlib import Path
 import yaml
-import argparse
 import sys
 import json
 
-sys.path.append('./../src')
+sys.path.append('./../')
 from src.data import MultiSet, ImageTransforms, ProfileTransform, PairAugmentation
 from src.model import ImageModel
 
 from lightning import Trainer
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
-
-parser = argparse.ArgumentParser()
-parser.add_argument("-d", "--dataset", help="Location to dataset tables.")
-parser.add_argument("-m", "--modelcard", help="Path to model card (yaml file).")
-args = parser.parse_args()
 
 card = Path(args.modelcard)
 
@@ -64,11 +65,12 @@ def multi_collate(batch, model=model):
     return image| label | image_shape
 
 train_loader = DataLoader(dataset=train_set, batch_size=bs, 
-                        shuffle=True, num_workers=4, 
+                        shuffle=True, num_workers=card_dict['num_workers'], 
                         drop_last=True, collate_fn=multi_collate)
 
 test_loader = DataLoader(dataset=test_set, batch_size=bs,
-                         num_workers=4, collate_fn=multi_collate)
+                         num_workers=card_dict['num_workers'],
+                         collate_fn=multi_collate)
 
 name = card.name.split('.')[0] + '_' + '_'.join(str(data_path).split('/')[-2:])
 logger = TensorBoardLogger(save_dir="../logs/", name=name)

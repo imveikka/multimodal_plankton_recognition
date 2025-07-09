@@ -9,9 +9,13 @@ image_encoder_args:
   name: 'efficientnet_b0'
   pretrained: false
   num_classes: 0
+  metadata: true
+  in_chans: 1
+  dropout: 0.1
+
 
 profile_encoder_args:
-  dim_in: 7
+  dim_in: 6
   dim_out: 128
   num_head: 4
   num_layers: 6
@@ -26,17 +30,18 @@ classifier_args:
   dropout: 0.1
 
 coordination_args:
-    'method': 'clip'  # distance, clip, or rank
+    method: 'clip'  # distance, clip, or rank
     #'margin': 5
-    'supervised': true
-    'alpha': .5
+    supervised: true
+    alpha: .5
 
 optim_args:
-  'lr': 1.0e-4
-  'weight_decay': 1.0e-5
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  nesterov: true
 
 trainer_args:
   precision: '16-mixed'
-  min_epochs: 50
-  max_epochs: 200
+  min_epochs: 40
+  max_epochs: 300
   accumulate_grad_batches: 4

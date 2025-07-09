@@ -27,7 +27,7 @@ card = Path(args.modelcard)
 with open(card, 'r') as stream:
     card_dict = yaml.safe_load(stream)
 
-print(json.dumps(card_dict, indent=4))
+# print(json.dumps(card_dict, indent=4))
 
 precision = card_dict.get('precision', 'highest')
 torch.set_float32_matmul_precision(precision)
@@ -67,19 +67,21 @@ def multi_collate(batch, model=model):
     profile = model.profile_encoder.tokenize(profile)
     image_shape = {'image_shape': torch.stack(image_shape)}
     profile_len = {'profile_len': torch.stack(profile_len)}
+    buckets = {'buckets': card_dict['buckets']}
 
-    return image | profile | image_shape | profile_len
+    return image | profile | image_shape | profile_len | buckets
 
 train_loader = DataLoader(dataset=train_set, batch_size=bs, 
-                        shuffle=True, num_workers=8, 
+                        shuffle=True, num_workers=card_dict['num_workers'], 
                         drop_last=True, collate_fn=multi_collate)
 
 valid_loader = DataLoader(dataset=test_set, batch_size=bs, 
-                         shuffle=True, num_workers=8,
+                         shuffle=True, num_workers=card_dict['num_workers'],
                          drop_last=True, collate_fn=multi_collate)
 
 test_loader = DataLoader(dataset=test_set, batch_size=bs, 
-                         num_workers=8, collate_fn=multi_collate)
+                         num_workers=card_dict['num_workers'],
+                         collate_fn=multi_collate)
 
 name = card.name.split('.')[0] + '_' + '_'.join(str(data_path).split('/')[-2:])
 logger = TensorBoardLogger(save_dir="../logs/", name=name)
@@ -101,5 +103,6 @@ trainer = Trainer(
     **card_dict['trainer_args']
 )
 
+print(f'Training from model card {args.modelcard}')
 trainer.fit(model, train_loader, valid_loader)
 

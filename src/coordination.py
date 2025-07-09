@@ -1,6 +1,5 @@
 import torch
 from torch import Tensor, clip, nn
-from torch.autograd import forward_ad
 from torch.nn import MSELoss, Module, Parameter, functional as F
 import math
 
@@ -25,21 +24,24 @@ class CLIPLoss(Module):
     
 
     def forward(self, image_emb: Tensor, profile_emb: Tensor,
-                label: None | Tensor = None) -> Tensor:
+                buckets: int = 1) -> Tensor:
 
-        image_emb = image_emb / image_emb.norm(dim=1, keepdim=True)
-        profile_emb = profile_emb / profile_emb.norm(dim=1, keepdim=True)       
-        logits = (image_emb @ profile_emb.T) * self.logit_scale.exp()
-        
+        assert image_emb.size(0) % buckets == 0, \
+        "Batch size must be divisible by number of buckets!"
+        bucket_size = image_emb.size(0) // buckets
 
-        if label is not None:
-            label = (label == label.reshape(-1, 1)).float()
-            label /= label.sum(dim=1, keepdim=True)
-        else:
-            label = torch.arange(image_emb.shape[0]).long().to(image_emb.device)
+        image_emb = F.normalize(image_emb)
+        profile_emb = F.normalize(profile_emb)
 
-        loss_1 = F.cross_entropy(logits, label)
-        loss_2 = F.cross_entropy(logits.T, label)
+        image_emb = image_emb.view(buckets, bucket_size, -1)
+        profile_emb = profile_emb.view(buckets, bucket_size, -1)
+        logits = (image_emb @ profile_emb.transpose(1, 2)) * self.logit_scale.exp()
+
+        label = torch.arange(bucket_size).long().to(image_emb.device)
+        label = torch.stack([label] * buckets)
+
+        loss_1 = torch.stack([F.cross_entropy(x, y) for x, y in zip(logits, label)]).mean()
+        loss_2 = torch.stack([F.cross_entropy(x.T, y) for x, y in zip(logits, label)]).mean()
         loss = (loss_1 + loss_2) / 2
 
         return loss
@@ -51,12 +53,11 @@ class CLIPPlus(Module):
     def __init__(self) -> None:
         super().__init__()
         self.clip = CLIPLoss()
-        self.l2 = nn.MSELoss()
+        self.l2 = MSELoss()
     
 
-    def forward(self, image_emb: Tensor, profile_emb: Tensor,
-                label: None | Tensor = None) -> Tensor:
-        loss_1 = self.clip(image_emb, profile_emb, label)
+    def forward(self, image_emb: Tensor, profile_emb: Tensor) -> Tensor:
+        loss_1 = self.clip(image_emb, profile_emb)
         loss_2 = self.l2(image_emb, profile_emb)
         return loss_1 + loss_2
 
@@ -71,21 +72,25 @@ class SigLIPLoss(Module):
 
 
     def forward(self, image_emb: Tensor, profile_emb: Tensor,
-                label: None | Tensor = None) -> Tensor:
+                buckets: int = 1) -> Tensor:
 
-        image_emb = image_emb / image_emb.norm(dim=1, keepdim=True)
-        profile_emb = profile_emb / profile_emb.norm(dim=1, keepdim=True)       
-        logits = (image_emb @ profile_emb.T) * self.logit_scale.exp() + self.bias
-        n = logits.shape[0]
+        assert image_emb.size(0) % buckets == 0, \
+        "Batch size must be divisible by number of buckets!"
 
-        if label is not None:
-            logits[~(label == label.reshape(-1, 1))] *= -1
-        else:
-            logits.mul_(-1).diagonal().mul_(-1)
+        image_emb = F.normalize(image_emb)
+        profile_emb = F.normalize(profile_emb)
 
-        loss = -F.logsigmoid(logits).sum() / n
+        bucket_size = image_emb.size(0) // buckets
+        image_emb = image_emb.view(buckets, bucket_size, -1)
+        profile_emb = profile_emb.view(buckets, bucket_size, -1)
 
-        return loss
+        logits = (image_emb @ profile_emb.transpose(1, 2)) * self.logit_scale.exp() + self.bias
+        logits = logits * (-1)
+        logits.diagonal(0, 1, 2).mul_(-1)
+
+        loss = -F.logsigmoid(logits).sum((1, 2)) / bucket_size
+
+        return loss.mean()
 
 
 class RankLoss(Module):
@@ -96,17 +101,13 @@ class RankLoss(Module):
         self.margin = margin
 
 
-    def forward(self, image_emb: Tensor, profile_emb: Tensor,
-                label: None | Tensor = None) -> Tensor:
+    def forward(self, image_emb: Tensor, profile_emb: Tensor) -> Tensor:
 
         image_emb = image_emb / image_emb.norm(dim=1, keepdim=True)
         profile_emb = profile_emb / profile_emb.norm(dim=1, keepdim=True)       
-        logits = (image_emb @ profile_emb.T)
 
-        if label is not None:
-            logits[label == label.reshape(-1, 1)] *= -1
-        else:
-            logits.diagonal().mul_(-1)
+        logits = (image_emb @ profile_emb.T)
+        logits.diagonal().mul_(-1)
 
         loss_1 = F.relu(self.margin + logits.sum(0)).mean()
         loss_2 = F.relu(self.margin + logits.sum(1)).mean()
