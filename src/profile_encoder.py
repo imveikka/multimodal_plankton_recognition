@@ -9,14 +9,14 @@ from typing import Iterable, Dict
 class ProfileTransformer(Module):
 
 
-    def __init__(self, dim_in: int, dim_hidden: int, max_len: int,
+    def __init__(self, dim_in: int, dim_hidden: int, target_size: int,
                  num_head: int, num_layers: int = 6,
                  dim_feedforward: int = 2024, dropout: float = 0.1, 
                  activation: str = 'gelu', metadata: bool = True) -> None:
         super().__init__()
 
         self.expand = nn.Linear(dim_in, dim_hidden, bias=False)
-        self.position = nn.Embedding(max_len + 2, dim_hidden, padding_idx=-1)
+        self.position = nn.Embedding(target_size + 2, dim_hidden, padding_idx=-1)
         self.padding_idx = self.position.padding_idx
 
         self.encoder = nn.TransformerEncoder(
@@ -72,8 +72,7 @@ class ProfileLSTM(Module):
 
 
     def __init__(self, dim_in: int, dim_hidden: int, num_layers: int,
-                 dropout: float = 0.1, metadata: bool = True,
-                 max_len: int = 256) -> None:
+                 dropout: float = 0.1, metadata: bool = True) -> None:
         super().__init__()
 
         self.expand = nn.Linear(dim_in, dim_hidden, bias=False)
@@ -82,7 +81,6 @@ class ProfileLSTM(Module):
         self.drop = nn.Dropout(dropout)
         self.dim_out = dim_hidden + metadata
         self.metadata = metadata
-        self.max_len = max_len
 
 
     def tokenize(self, profile: Tensor | Iterable[Tensor]) -> Dict[str, Tensor]:

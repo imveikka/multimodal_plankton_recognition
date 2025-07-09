@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 
 if __name__ == "__main__":
 
+    pd.options.mode.chained_assignment = None  # default='warn'
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -74,6 +75,10 @@ if __name__ == "__main__":
 
     if not annot_dir.exists():
         annot_dir.mkdir()
+
+    stepback = name.count('/') + 1
+    train_annot.loc[:, ['image', 'profile']] = train[['image', 'profile']].apply(lambda x: '../' * stepback + x)
+    test_annot.loc[:, ['image', 'profile']] = test[['image', 'profile']].apply(lambda x: '../' * stepback + x)
 
     train.to_csv(annot_dir / f'train.csv')
     test.to_csv(annot_dir /  f'test.csv')

@@ -7,6 +7,7 @@ from sklearn.model_selection import StratifiedKFold
 
 if __name__ == "__main__":
 
+    pd.options.mode.chained_assignment = None  # default='warn'
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -52,8 +53,16 @@ if __name__ == "__main__":
         annot_dir = data_dir / f'{args.name}{k}'
         if not annot_dir.exists():
             annot_dir.mkdir()
-        annot.iloc[train].to_csv(annot_dir / f'train.csv')
-        annot.iloc[test].to_csv(annot_dir /  f'test.csv')
+        
+        train_annot = annot.iloc[train]
+        test_annot = annot.iloc[test]
+
+        stepback = args.name.count('/') + 1
+        train_annot.loc[:, ['image', 'profile']] = train_annot[['image', 'profile']].apply(lambda x: '../' * stepback + x)
+        test_annot.loc[:, ['image', 'profile']] = test_annot[['image', 'profile']].apply(lambda x: '../' * stepback + x)
+
+        test_annot.to_csv(annot_dir /  f'test.csv')
+        train_annot.to_csv(annot_dir / f'train.csv')
 
     print(
         f'Dataset folds created to annotation\n' \

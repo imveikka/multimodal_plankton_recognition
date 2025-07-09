@@ -12,15 +12,16 @@ import cv2
 from scipy.stats import mode
 import pandas as pd
 from pathlib import Path
-from typing import Iterable, Dict
+from typing import Iterable, Dict, Optional, Callable
 from PIL import Image
 
 
 class MultiSet(Dataset):
 
 
-    def __init__(self, annotation_path: Path, image_transforms: object,
-                 profile_transform: object, pair_augmentation: object) -> None:
+    def __init__(self, annotation_path: Path, image_transforms: Callable,
+                 profile_transform: Callable,
+                 pair_augmentation: Optional[Callable] = None) -> None:
         super().__init__()
 
         self.parent = annotation_path.parent
@@ -37,22 +38,21 @@ class MultiSet(Dataset):
     
 
     def __getitem__(self, index: int) -> Dict[str, Tensor]:
-        image = cv2.imread(self.parent / '..' / self.table.image[index], cv2.IMREAD_GRAYSCALE)
-        profile = np.loadtxt(self.parent / '..' / self.table.profile[index], delimiter=',', skiprows=1)  
-        profile = torch.tensor(profile)
+        # image = cv2.imread(self.parent / self.table.image[index], cv2.IMREAD_GRAYSCALE)
+        image = Image.open(self.parent / self.table.image[index])
+        profile = np.loadtxt(self.parent / self.table.profile[index], delimiter=',', skiprows=1)  
 
-        image_shape = torch.tensor(image.shape)
+        # image_shape = torch.tensor(image.shape)
+        image_shape = torch.tensor(image.size[::-1])
         profile_length = torch.tensor([profile.shape[0]])
 
         image = self.image_transforms(image)
         profile = self.profile_transform(profile)
-        label = self.table['class'][index]
 
+        label = self.table['class'][index]
 
         if self.pair_augmentation:
             image, profile = self.pair_augmentation(image, profile)
-        else:
-            image = v2.functional.resize(image, (224, 224))
 
         return {'image': image, 'profile': profile, 'label': label,
                 'image_shape': image_shape,
@@ -70,6 +70,41 @@ class ImageTransforms:
         return image
 
 
+class ImageTransformTrain:
+
+    def __init__(self, target_size=224) -> None:
+        self.transforms = v2.Compose((
+            lambda x: x.crop((0, 25, x.width, x.height)),
+            lambda x: resize_pil(x, math.ceil(1.05 * target_size), edge=True),
+            v2.ToImage(),
+            v2.Grayscale(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize([0.6136], [0.0938]),
+            v2.RandomCrop((target_size, target_size)),
+            v2.RandomVerticalFlip(),
+            lambda x: x + 1e-3 * torch.randn_like(x),
+        ))
+    
+    def __call__(self, img: Image) -> Tensor:
+        return self.transforms(img)
+    
+
+class ImageTransformTest:
+
+    def __init__(self, target_size=224) -> None:
+        self.transforms = v2.Compose((
+            lambda x: x.crop((0, 25, x.width, x.height)),
+            lambda x: resize_pil(x, target_size, edge=True),
+            v2.ToImage(),
+            v2.Grayscale(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize([0.6136], [0.0938]),
+        ))
+    
+    def __call__(self, img: Image) -> Tensor:
+        return self.transforms(img)
+
+
 class ProfileTransform:
 
 
@@ -84,8 +119,39 @@ class ProfileTransform:
         return profile
 
 
-class FixedHeightResize:
+class ProfileTransformTrain:
 
+    def __init__(self, target_size=224) -> None:
+        self.transform =  v2.Compose((
+            lambda x: torch.tensor(x).float().add(1).log().t().unsqueeze(1),
+            v2.Normalize([5.256, 5.386, 1.817, 2.045, 3.216, 5.501],
+                         [3.400, 3.180, 1.192, 1.551, 2.317, 3.170]),
+            v2.Resize((1, math.ceil(1.05 * target_size))),
+            v2.RandomCrop((1, target_size)),
+            lambda x: x + 1e-3 * torch.randn_like(x),
+            lambda x: x.squeeze(1).t()
+        ))
+
+    def __call__(self, prof: np.ndarray):
+        return self.transform(prof) 
+
+
+class ProfileTransformTest:
+
+    def __init__(self, target_size=224) -> None:
+        self.transform =  v2.Compose((
+            lambda x: torch.tensor(x).float().add(1).log().t().unsqueeze(1),
+            v2.Normalize([5.256, 5.386, 1.817, 2.045, 3.216, 5.501],
+                         [3.400, 3.180, 1.192, 1.551, 2.317, 3.170]),
+            v2.Resize((1, target_size)),
+            lambda x: x.squeeze(1).t()
+        ))
+
+    def __call__(self, prof: np.ndarray):
+        return self.transform(prof) 
+
+
+class FixedHeightResize:
 
     def __init__(self, size):
         self.size = size
@@ -97,30 +163,38 @@ class FixedHeightResize:
         return F.resize(img, (self.size, new_w))
 
 
+# class PairAugmentation:
+# 
+    # def __init__(self):
+        # self.resize = v2.Resize((224, 224))
+        # self.affine = v2.RandomAffine(degrees=(-2, 2),
+                                    #   translate=(.02, .02),
+                                    #   scale=(.98, 1.02))
+        # self.jitter = v2.ColorJitter(0.1, 0.1)
+# 
+# 
+    # def __call__(self, image: torch.Tensor, profile: torch.Tensor) -> tuple[torch.Tensor]:
+# 
+        # image = self.resize(image)
+        # image += (1e-3 * torch.randn(image.shape[1:]))
+        # profile += (1e-3 * torch.randn(profile.shape))
+        # image = self.jitter(image)
+        # if random.randint(0, 1) == 0:
+            # image = v2.functional.vertical_flip(image)
+        # if random.randint(0, 1) == 0:
+            # image = v2.functional.horizontal_flip(image)
+            # profile = profile.flip(0)
+        # image = self.affine(image)
+# 
+        # return image, profile
+
+
 class PairAugmentation:
 
-
-    def __init__(self):
-        self.resize = v2.Resize((224, 224))
-        self.affine = v2.RandomAffine(degrees=(-2, 2),
-                                      translate=(.02, .02),
-                                      scale=(.98, 1.02))
-        self.jitter = v2.ColorJitter(0.1, 0.1)
-
-
-    def __call__(self, image: torch.Tensor, profile: torch.Tensor) -> tuple[torch.Tensor]:
-
-        image = self.resize(image)
-        image += (1e-3 * torch.randn(image.shape[1:]))
-        profile += (1e-3 * torch.randn(profile.shape))
-        image = self.jitter(image)
-        if random.randint(0, 1) == 0:
-            image = v2.functional.vertical_flip(image)
+    def __call__(self, image: Tensor, profile: Tensor) -> Iterable[Tensor]:
         if random.randint(0, 1) == 0:
             image = v2.functional.horizontal_flip(image)
             profile = profile.flip(0)
-        image = self.affine(image)
-
         return image, profile
 
 

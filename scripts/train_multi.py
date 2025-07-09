@@ -7,7 +7,9 @@ import sys
 import json
 
 sys.path.append('../')
-from src.data import MultiSet, ImageTransforms, ProfileTransform, PairAugmentation
+from src.data import MultiSet, ImageTransformTrain, ImageTransformTest, \
+                     ProfileTransformTrain, ProfileTransformTest, \
+                     PairAugmentation
 from src.profile_encoder import ProfileTransformer
 from src.image_encoder import ImageEncoder
 from src.model import MultiModel
@@ -31,25 +33,27 @@ with open(card, 'r') as stream:
 
 precision = card_dict.get('precision', 'highest')
 torch.set_float32_matmul_precision(precision)
-max_len = card_dict.get('max_len')
+target_size = card_dict.get('target_size')
 bs = card_dict['bs']
 
 data_path = Path(f'{args.dataset}')
 dataset = data_path.name
 
-image_transforms = ImageTransforms()
-signal_transforms = ProfileTransform(max_len=max_len)
+image_transforms_train = ImageTransformTrain(target_size)
+signal_transforms_train = ProfileTransformTrain(target_size)
 pair_augmentation = PairAugmentation()
 
+image_transforms_test = ImageTransformTest(target_size)
+signal_transforms_test = ProfileTransformTest(target_size)
+
 train_set = MultiSet(annotation_path=data_path / f'train.csv', 
-                   image_transforms=image_transforms,
-                   profile_transform=signal_transforms,
+                   image_transforms=image_transforms_train,
+                   profile_transform=signal_transforms_train,
                    pair_augmentation=pair_augmentation)
 
 test_set = MultiSet(annotation_path=data_path / f'test.csv', 
-                    image_transforms=image_transforms,
-                    profile_transform=signal_transforms,
-                    pair_augmentation=None)
+                    image_transforms=image_transforms_test,
+                    profile_transform=signal_transforms_test)
 
 model = MultiModel(
     dim_embed=card_dict['dim_embedding'],
@@ -78,10 +82,6 @@ train_loader = DataLoader(dataset=train_set, batch_size=bs,
 valid_loader = DataLoader(dataset=test_set, batch_size=bs, 
                          shuffle=True, num_workers=card_dict['num_workers'],
                          drop_last=True, collate_fn=multi_collate)
-
-test_loader = DataLoader(dataset=test_set, batch_size=bs, 
-                         num_workers=card_dict['num_workers'],
-                         collate_fn=multi_collate)
 
 name = card.name.split('.')[0] + '_' + '_'.join(str(data_path).split('/')[-2:])
 logger = TensorBoardLogger(save_dir="../logs/", name=name)
