@@ -8,6 +8,9 @@ lightning_logs
 *.yml
 !example_*.yaml
 
+# pickles
+*.pkl
+
 # .vscode
 .vscode
 

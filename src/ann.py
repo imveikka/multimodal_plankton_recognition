@@ -3,7 +3,7 @@ from sklearn.utils.extmath import weighted_mode
 from pynndescent import NNDescent
 
 
-class ANNZeroShot:
+class ANNClassifier:
 
 
     def __init__(self, X, y, **nndescent_args):
@@ -22,7 +22,7 @@ class ANNZeroShot:
         weights = self._get_weights(dist)
         classes = self.y_[idx]
         predictions, _ = weighted_mode(classes, weights, axis=1)
-        return predictions.ravel()
+        return predictions.astype(int).ravel()
 
 
     def _get_weights(self, dist):

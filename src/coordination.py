@@ -50,16 +50,18 @@ class CLIPLoss(Module):
 class CLIPPlus(Module):
 
 
-    def __init__(self) -> None:
+    def __init__(self, beta: float = 0.25) -> None:
         super().__init__()
         self.clip = CLIPLoss()
         self.l2 = MSELoss()
+        self.beta = beta
     
 
-    def forward(self, image_emb: Tensor, profile_emb: Tensor) -> Tensor:
-        loss_1 = self.clip(image_emb, profile_emb)
+    def forward(self, image_emb: Tensor, profile_emb: Tensor,
+                buckets: int = 1) -> Tensor:
+        loss_1 = self.clip(image_emb, profile_emb, buckets)
         loss_2 = self.l2(image_emb, profile_emb)
-        return loss_1 + loss_2
+        return loss_1 + self.beta * loss_2
 
 
 class SigLIPLoss(Module):
@@ -91,6 +93,23 @@ class SigLIPLoss(Module):
         loss = -F.logsigmoid(logits).sum((1, 2)) / bucket_size
 
         return loss.mean()
+
+
+class SigLIPPlus(Module):
+
+
+    def __init__(self, beta: float = 0.25) -> None:
+        super().__init__()
+        self.siglip = SigLIPLoss()
+        self.l2 = MSELoss()
+        self.beta = beta
+    
+
+    def forward(self, image_emb: Tensor, profile_emb: Tensor,
+                buckets: int = 1) -> Tensor:
+        loss_1 = self.siglip(image_emb, profile_emb, buckets)
+        loss_2 = self.l2(image_emb, profile_emb)
+        return loss_1 + self.beta * loss_2
 
 
 class RankLoss(Module):

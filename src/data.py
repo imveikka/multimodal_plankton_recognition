@@ -39,7 +39,7 @@ class MultiSet(Dataset):
 
     def __getitem__(self, index: int) -> Dict[str, Tensor]:
         # image = cv2.imread(self.parent / self.table.image[index], cv2.IMREAD_GRAYSCALE)
-        image = Image.open(self.parent / self.table.image[index])
+        image = Image.open(self.parent / self.table.image[index]).convert('RGB')
         profile = np.loadtxt(self.parent / self.table.profile[index], delimiter=',', skiprows=1)  
 
         # image_shape = torch.tensor(image.shape)
@@ -79,10 +79,11 @@ class ImageTransformTrain:
             v2.ToImage(),
             v2.Grayscale(),
             v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize([0.6136], [0.0938]),
+            lambda x: x * 2 - 1,
+            # v2.Normalize([0.6136], [0.0938]),
             v2.RandomCrop((target_size, target_size)),
             v2.RandomVerticalFlip(),
-            lambda x: x + 1e-3 * torch.randn_like(x),
+            # lambda x: x + 1e-3 * torch.randn_like(x),
         ))
     
     def __call__(self, img: Image) -> Tensor:
@@ -98,7 +99,8 @@ class ImageTransformTest:
             v2.ToImage(),
             v2.Grayscale(),
             v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize([0.6136], [0.0938]),
+            lambda x: x * 2 - 1,
+            # v2.Normalize([0.6136], [0.0938]),
         ))
     
     def __call__(self, img: Image) -> Tensor:
@@ -122,14 +124,16 @@ class ProfileTransform:
 class ProfileTransformTrain:
 
     def __init__(self, target_size=224) -> None:
+        self.div = torch.FloatTensor([9.6058, 8.9211, 8.9211, 8.9211, 8.9211, 8.9211])
         self.transform =  v2.Compose((
-            lambda x: torch.tensor(x).float().add(1).log().t().unsqueeze(1),
-            v2.Normalize([5.256, 5.386, 1.817, 2.045, 3.216, 5.501],
-                         [3.400, 3.180, 1.192, 1.551, 2.317, 3.170]),
+            lambda x: torch.tensor(x).add(1).log().div(self.div).mul(2).add(-1),
+            lambda x : x.t().unsqueeze(1),
+            # v2.Normalize([5.256, 5.386, 1.817, 2.045, 3.216, 5.501],
+                        #  [3.400, 3.180, 1.192, 1.551, 2.317, 3.170]),
             v2.Resize((1, math.ceil(1.05 * target_size))),
             v2.RandomCrop((1, target_size)),
             lambda x: x + 1e-3 * torch.randn_like(x),
-            lambda x: x.squeeze(1).t()
+            lambda x: x.squeeze(1).t().float()
         ))
 
     def __call__(self, prof: np.ndarray):
@@ -139,12 +143,14 @@ class ProfileTransformTrain:
 class ProfileTransformTest:
 
     def __init__(self, target_size=224) -> None:
+        self.div = torch.FloatTensor([9.6058, 8.9211, 8.9211, 8.9211, 8.9211, 8.9211])
         self.transform =  v2.Compose((
-            lambda x: torch.tensor(x).float().add(1).log().t().unsqueeze(1),
-            v2.Normalize([5.256, 5.386, 1.817, 2.045, 3.216, 5.501],
-                         [3.400, 3.180, 1.192, 1.551, 2.317, 3.170]),
+            lambda x: torch.tensor(x).add(1).log().div(self.div).mul(2).add(-1),
+            lambda x : x.t().unsqueeze(1),
+            # v2.Normalize([5.256, 5.386, 1.817, 2.045, 3.216, 5.501],
+                        #  [3.400, 3.180, 1.192, 1.551, 2.317, 3.170]),
             v2.Resize((1, target_size)),
-            lambda x: x.squeeze(1).t()
+            lambda x: x.squeeze(1).t().float()
         ))
 
     def __call__(self, prof: np.ndarray):

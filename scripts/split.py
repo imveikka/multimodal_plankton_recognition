@@ -77,8 +77,8 @@ if __name__ == "__main__":
         annot_dir.mkdir()
 
     stepback = name.count('/') + 1
-    train_annot.loc[:, ['image', 'profile']] = train[['image', 'profile']].apply(lambda x: '../' * stepback + x)
-    test_annot.loc[:, ['image', 'profile']] = test[['image', 'profile']].apply(lambda x: '../' * stepback + x)
+    train.loc[:, ['image', 'profile']] = train[['image', 'profile']].apply(lambda x: '../' * stepback + x)
+    test.loc[:, ['image', 'profile']] = test[['image', 'profile']].apply(lambda x: '../' * stepback + x)
 
     train.to_csv(annot_dir / f'train.csv')
     test.to_csv(annot_dir /  f'test.csv')

@@ -44,10 +44,14 @@ class MultiModel(LightningModule):
         method = coordination_args.get('method')
         if method == 'clip':
             self.loss = CLIPLoss()
-        elif method == 'rank':
-            self.loss = RankLoss(margin=coordination_args['margin'])
         elif method == 'siglip':
             self.loss = SigLIPLoss()
+        elif method == 'clipplus':
+            self.loss = CLIPPlus(beta=coordination_args.get('beta', .25))
+        elif method == 'siglipplus':
+            self.loss = SigLIPPlus(beta=coordination_args.get('beta', .25))
+        elif method == 'rank':
+            self.loss = RankLoss(margin=coordination_args.get('margin', 0.25))
         else:
             raise Exception("Coordination loss not found.")
 
