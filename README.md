@@ -1,3 +1,6 @@
 # Multimodal plankton recognition
 
-This repository contains the code used in my Master's thesis.
+* Thesis: [Cross-modal learning for plankton recognition](https://lutpub.lut.fi/handle/10024/170092)
+
+![pre-training ](./assets/pretraining.png)
+![classification](./assets/classification.png)
